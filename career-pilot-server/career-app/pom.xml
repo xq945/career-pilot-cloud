@@ -33,10 +33,6 @@
         </dependency>
         <dependency>
             <groupId>com.careerpilot</groupId>
-            <artifactId>career-domain-auth</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.careerpilot</groupId>
             <artifactId>career-domain-resume</artifactId>
         </dependency>
         <dependency>

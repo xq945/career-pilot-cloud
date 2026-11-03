@@ -5,6 +5,11 @@ server:
 spring:
   application:
     name: career-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
   cloud:
     nacos:
       discovery:
@@ -14,6 +19,10 @@ spring:
       server:
         webflux:
           routes:
+            - id: career-auth
+              uri: lb://career-auth
+              predicates:
+                - Path=/api/auth/**,/api/user/**
             - id: career-api
               uri: lb://career-pilot-server
               predicates:

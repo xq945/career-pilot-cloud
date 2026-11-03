@@ -1,5 +1,7 @@
 package com.careerpilot.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -13,6 +15,10 @@ import com.careerpilot.dto.UserProfile;
 import com.careerpilot.entity.SysUser;
 import com.careerpilot.mapper.SysUserMapper;
 import com.careerpilot.security.JwtTokenProvider;
+import com.careerpilot.security.TokenBlacklistService;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 
 /**
  * 认证服务（《API接口设计》3 节）：注册、登录与 Token 签发。
@@ -23,7 +29,11 @@ import com.careerpilot.security.JwtTokenProvider;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private static final int STATUS_ENABLED = 1;
+
+    private static final String BEARER_PREFIX = "Bearer ";
 
     private final SysUserMapper userMapper;
 
@@ -33,12 +43,16 @@ public class AuthService {
 
     private final UserService userService;
 
+    private final TokenBlacklistService tokenBlacklistService;
+
     public AuthService(SysUserMapper userMapper, PasswordEncoder passwordEncoder,
-                       JwtTokenProvider tokenProvider, UserService userService) {
+                       JwtTokenProvider tokenProvider, UserService userService,
+                       TokenBlacklistService tokenBlacklistService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
         this.userService = userService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     /** 注册：用户名与邮箱唯一，密码以 BCrypt 哈希保存 */
@@ -87,6 +101,30 @@ public class AuthService {
         response.setExpiresIn(tokenProvider.getExpirationSeconds());
         response.setUser(userService.toView(user));
         return response;
+    }
+
+    /**
+     * 退出登录：把当前用户 JWT 的 jti 写入 Redis 黑名单（TTL = 剩余有效期）。
+     *
+     * <p>令牌无效/缺失时不报错——登出本应是幂等的；网关会拒绝已拉黑的令牌。
+     */
+    public void logout(String authorization) {
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+            return;
+        }
+        try {
+            Claims claims = tokenProvider.parse(authorization.substring(BEARER_PREFIX.length()).trim());
+            String jti = claims.getId();
+            if (jti == null) {
+                return;
+            }
+            long ttlSeconds = claims.getExpiration() == null ? 0
+                    : (claims.getExpiration().getTime() - System.currentTimeMillis()) / 1000L;
+            tokenBlacklistService.blacklist(jti, ttlSeconds);
+        }
+        catch (JwtException | IllegalArgumentException ex) {
+            log.debug("登出令牌无效，忽略：{}", ex.getMessage());
+        }
     }
 
 }

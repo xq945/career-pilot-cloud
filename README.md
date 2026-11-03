@@ -30,7 +30,8 @@ career-pilot-ai/
 │  ├─ career-security/    JWT 过滤器与当前用户上下文
 │  ├─ career-ai-core/     多模型 Provider 与统一模型调用
 │  ├─ career-domain-*/    业务域（auth / resume / job / match / interview / agent）
-│  ├─ career-app/         应用装配（Controller、配置、启动类，8081）
+│  ├─ career-app/         剩余业务单体（8091）
+│  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
 ├─ prototype/             前端高保真原型（HTML，双击 index.html 即可查看）
@@ -83,7 +84,7 @@ node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # �
 | Maven | 3.9+ | 3.9.16 |
 | Node.js | 20+ | 24.21.0 |
 | MySQL | 8.0+ | 8.0.46 |
-| Redis | 6+（**M16 起**，仅「创建优化」异步链路需要；`app.optimization.async.enabled=false` 时可不装） | 本地服务 `6379` |
+| Redis | 6.2+（**M16** 优化任务队列；**阶段 4 起** auth 验证码与 JWT 黑名单也使用） | 本地服务 `6379` |
 | Nacos | 3.x（**阶段 3 起**，服务注册发现；无 Nacos 时可用 `NACOS_ENABLED=false` 直连单体） | 3.0.3，`8848` |
 
 ### 1. 初始化数据库
@@ -93,6 +94,14 @@ mysql -u root -p < Mysql/career_pilot_init.sql
 ```
 
 脚本创建 `career_pilot` 库（utf8mb4 / utf8mb4_0900_ai_ci）与 13 张表，内容由《数据库设计》的 DDL 生成，与设计文档保持同步。
+
+阶段 4 起，认证数据拆到独立 schema（首次部署需再执行一次）：
+
+```bash
+mysql -u root -p < Mysql/migration-stage4-auth.sql
+```
+
+该脚本创建 `cp_auth`、复制 `sys_user`，并删除 `career_pilot` 各业务表对 `sys_user` 的跨库外键。
 
 ### 2. 配置后端
 
@@ -120,17 +129,21 @@ cp application-local.yml.example application-local.yml
 
 ### 3. 启动后端
 
-先确认 Nacos 已启动（默认 `127.0.0.1:8848`）。
+先确认 Nacos（`127.0.0.1:8848`）与 Redis（`127.0.0.1:6379`）已启动。
 
 ```bash
 cd career-pilot-server
 mvn clean package
 
-# 1) 业务服务：8081，注册到 Nacos 的 CAREER_PILOT 分组
+# 1) 认证服务：8081（验证码/JWT/资料/头像）
+#    DB_PASSWORD 为 MySQL 密码；APP_JWT_SECRET 与 application-local.yml 的 app.jwt.secret 相同
+DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  java -jar career-auth-service/target/career-auth.jar
+
+# 2) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
 java -jar career-app/target/career-pilot-server.jar
 
-# 2) 网关：8080，统一入口（另开终端）
-#    APP_JWT_SECRET 必须与 application-local.yml 的 app.jwt.secret 相同
+# 3) 网关：8080（另开终端）
 GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-gateway/target/career-gateway.jar
 ```
@@ -178,7 +191,8 @@ npm run dev
 
 | 项 | 默认值 | 配置项 |
 |---|---|---|
-| 后端端口 | 8081 | `server.port` / `SERVER_PORT` |
+| auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |
+| 剩余单体端口 | 8091 | `server.port` / `SERVER_PORT` |
 | 网关端口 | 8080 | `server.port` / `GATEWAY_PORT` |
 | Nacos 地址 | 127.0.0.1:8848 | `spring.cloud.nacos.discovery.server-addr` / `NACOS_ADDR` |
 | 前端开发端口 | 5173 | `career-pilot-web/vite.config.js` |

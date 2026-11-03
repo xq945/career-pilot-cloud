@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import java.util.Arrays;
 
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,6 +19,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.dto.UserProfile;
 import com.careerpilot.entity.SysUser;
@@ -40,6 +44,16 @@ class UserServiceTest {
     private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
 
     private static final int MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+    /**
+     * 独立模块单测没有 Spring 上下文预热 MyBatis-Plus 的 Lambda 缓存，
+     * 显式注册 SysUser 的 TableInfo，否则 LambdaUpdateWrapper 无法解析列名。
+     */
+    @BeforeAll
+    static void initLambdaCache() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), "test"), SysUser.class);
+    }
 
     @Mock
     private SysUserMapper userMapper;

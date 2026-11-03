@@ -1,0 +1,57 @@
+server:
+  port: ${AUTH_PORT:8081}
+
+spring:
+  application:
+    name: career-auth
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: CAREER_PILOT
+        enabled: ${NACOS_ENABLED:true}
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://localhost:3306/cp_auth?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+  tomcat:
+    max-swallow-size: 50MB
+
+app:
+  jwt:
+    # 与网关、单体一致；缺失启动失败
+    secret: ${APP_JWT_SECRET:}
+    expiration-seconds: 7200
+  internal-token:
+    ttl-seconds: 300
+    # 网关签发到本服务的内部令牌受众
+    audience: career-auth
+  captcha:
+    enabled: ${APP_CAPTCHA_ENABLED:true}
+    fixed-text: ${APP_CAPTCHA_FIXED_TEXT:}
+    expire-seconds: ${APP_CAPTCHA_EXPIRE_SECONDS:300}
+    max-size: 10000
+    cleanup-cron: ${APP_CAPTCHA_CLEANUP_CRON:0 */5 * * * *}
+    # 多实例部署必须为 redis；local 仅用于单机/测试
+    store: ${APP_CAPTCHA_STORE:redis}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  file:
+    storage-type: ${FILE_STORAGE_TYPE:local}
+    storage-root: ${FILE_STORAGE_ROOT:${user.home}/career-pilot-uploads}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

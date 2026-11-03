@@ -65,15 +65,20 @@ public class InternalTokenService {
         this.audience = audience;
     }
 
-    /** 签发内部令牌：sub = userId，附带 username 与 scope */
+    /** 签发内部令牌：sub = userId，附带 username 与 scope（受众取本服务配置） */
     public String issue(Long userId, String username) {
+        return issue(userId, username, audience);
+    }
+
+    /** 按目标服务签发：网关根据路由选择受众（aud），下游只接受自己的 aud */
+    public String issue(Long userId, String username, String targetAudience) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + ttlSeconds * 1000L);
         return Jwts.builder()
                 .subject(String.valueOf(userId))
                 .claim("username", username)
                 .claim("scope", SCOPE)
-                .audience().add(audience).and()
+                .audience().add(targetAudience).and()
                 .id(UUID.randomUUID().toString())
                 .issuedAt(now)
                 .expiration(expiry)

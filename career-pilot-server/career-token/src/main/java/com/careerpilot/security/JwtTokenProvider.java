@@ -2,6 +2,7 @@ package com.careerpilot.security;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 import javax.crypto.SecretKey;
 
@@ -51,6 +52,8 @@ public class JwtTokenProvider {
         return Jwts.builder()
                 .subject(username)
                 .claim("userId", userId)
+                // jti：登出撤销与黑名单的键（阶段 4）
+                .id(UUID.randomUUID().toString())
                 .issuedAt(now)
                 .expiration(expiry)
                 // 显式指定 HS256：signWith(Key) 会按键长自动选算法，

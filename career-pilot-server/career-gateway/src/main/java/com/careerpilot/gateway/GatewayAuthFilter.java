@@ -21,6 +21,7 @@ import org.springframework.web.server.ServerWebExchange;
 import com.careerpilot.common.ApiResponse;
 import com.careerpilot.security.InternalTokenService;
 import com.careerpilot.security.JwtTokenProvider;
+import com.careerpilot.security.TokenBlacklistService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -50,16 +51,24 @@ public class GatewayAuthFilter implements GlobalFilter, Ordered {
 
     private static final String TRACE_HEADER = "X-Trace-Id";
 
+    private static final String AUTH_AUDIENCE = "career-auth";
+
+    private static final String APP_AUDIENCE = "career-pilot-server";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final JwtTokenProvider jwtTokenProvider;
 
     private final InternalTokenService internalTokenService;
 
+    private final TokenBlacklistService tokenBlacklistService;
+
     public GatewayAuthFilter(JwtTokenProvider jwtTokenProvider,
-                             InternalTokenService internalTokenService) {
+                             InternalTokenService internalTokenService,
+                             TokenBlacklistService tokenBlacklistService) {
         this.jwtTokenProvider = jwtTokenProvider;
         this.internalTokenService = internalTokenService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     @Override
@@ -85,9 +94,16 @@ public class GatewayAuthFilter implements GlobalFilter, Ordered {
         }
         try {
             Claims claims = jwtTokenProvider.parse(authorization.substring(BEARER_PREFIX.length()).trim());
+            // 登出撤销：jti 命中黑名单则拒绝（Redis 不可用时 fail-open）
+            if (tokenBlacklistService.isBlacklisted(claims.getId())) {
+                return unauthorized(exchange);
+            }
             Long userId = claims.get("userId", Number.class).longValue();
             String username = claims.getSubject();
-            String internalToken = internalTokenService.issue(userId, username);
+            // 内部令牌的受众与目标服务一致：auth 服务只接受 aud=career-auth
+            String targetAudience = path.startsWith("/api/auth/") || path.startsWith("/api/user/")
+                    ? AUTH_AUDIENCE : APP_AUDIENCE;
+            String internalToken = internalTokenService.issue(userId, username, targetAudience);
             String traceId = request.getHeaders().getFirst(TRACE_HEADER);
             if (traceId == null || traceId.isBlank()) {
                 traceId = UUID.randomUUID().toString().replace("-", "");

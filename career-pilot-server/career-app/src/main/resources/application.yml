@@ -1,6 +1,6 @@
 server:
-  # 阶段 3 起：单体在 8081，8080 留给网关；直连调试可用 SERVER_PORT 覆盖
-  port: ${SERVER_PORT:8081}
+  # 阶段 4 起：8081 归 auth 服务，单体（剩余业务）在 8091；直连调试可用 SERVER_PORT 覆盖
+  port: ${SERVER_PORT:8091}
 
 spring:
   application:

@@ -3,6 +3,7 @@ package com.careerpilot.controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -58,13 +59,13 @@ public class AuthController {
     }
 
     /**
-     * 退出登录。
-     *
-     * 服务端不实现 Token 撤销机制，该接口仅表示客户端应清除本地 Token
-     * （《API接口设计》3.5），不得声称服务端已使 Token 失效。
+     * 退出登录（阶段 4）：把当前用户 JWT 的 jti 写入 Redis 黑名单，
+     * 网关在后续请求中拒绝该 Token；客户端仍应清除本地 Token。
      */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout() {
+    public ApiResponse<Void> logout(
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        authService.logout(authorization);
         return ApiResponse.success();
     }
 

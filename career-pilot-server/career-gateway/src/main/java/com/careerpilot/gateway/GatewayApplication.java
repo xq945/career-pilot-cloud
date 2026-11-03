@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Import;
 
 import com.careerpilot.security.InternalTokenService;
 import com.careerpilot.security.JwtTokenProvider;
+import com.careerpilot.security.TokenBlacklistService;
 
 /**
  * 网关启动类。
@@ -15,7 +16,7 @@ import com.careerpilot.security.JwtTokenProvider;
  * Servlet 过滤器带进 WebFlux 网关。
  */
 @SpringBootApplication(scanBasePackages = "com.careerpilot.gateway")
-@Import({JwtTokenProvider.class, InternalTokenService.class})
+@Import({JwtTokenProvider.class, InternalTokenService.class, TokenBlacklistService.class})
 public class GatewayApplication {
 
     public static void main(String[] args) {
