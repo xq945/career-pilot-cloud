@@ -11,10 +11,22 @@ public class BusinessException extends RuntimeException {
 
     private final int httpStatus;
 
+    /**
+     * 可选的附加响应数据（M16 修复 O-16）：同步降级执行失败时携带 optimizationId，
+     * 让前端能区分“任务已创建但执行失败”与“任务尚未创建”。
+     * 其余场景为 null，错误响应与既有契约逐字节一致。
+     */
+    private final Object data;
+
     public BusinessException(int code, int httpStatus, String message) {
+        this(code, httpStatus, message, null);
+    }
+
+    public BusinessException(int code, int httpStatus, String message, Object data) {
         super(message);
         this.code = code;
         this.httpStatus = httpStatus;
+        this.data = data;
     }
 
     /** 400 / 40000 通用参数错误 */
@@ -94,6 +106,11 @@ public class BusinessException extends RuntimeException {
 
     public int getHttpStatus() {
         return httpStatus;
+    }
+
+    /** 附加响应数据；null 表示沿用既有错误响应结构 */
+    public Object getData() {
+        return data;
     }
 
 }

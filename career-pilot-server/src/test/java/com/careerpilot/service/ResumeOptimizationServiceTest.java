@@ -2,8 +2,13 @@ package com.careerpilot.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -13,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,15 +28,19 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.Hashing;
+import com.careerpilot.common.PageQuery;
+import com.careerpilot.common.PageResult;
 import com.careerpilot.dto.MatchDetail;
 import com.careerpilot.dto.MatchDimensionScore;
 import com.careerpilot.dto.MatchDimensionScores;
 import com.careerpilot.dto.OptimizedResumeFile;
 import com.careerpilot.dto.ResumeOptimizationCreateRequest;
 import com.careerpilot.dto.ResumeOptimizationDetail;
+import com.careerpilot.dto.ResumeOptimizationView;
 import com.careerpilot.dto.ai.ChangeItem;
 import com.careerpilot.dto.ai.ResumeAnalysisAiOutput;
 import com.careerpilot.dto.ai.ResumeOptimizationAiOutput;
@@ -215,6 +225,114 @@ class ResumeOptimizationServiceTest {
     }
 
     @Test
+    void create_syncBusinessFailure_carriesOptimizationId() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.aiUnavailable("大模型服务暂时不可用，请稍后重试"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50200);
+        assertThat(ex.getData()).isEqualTo(Map.of("optimizationId", 301L));
+        verify(stateService).fail(eq(301L), eq("attempt-1"), eq("大模型服务暂时不可用，请稍后重试"), nullable(String.class));
+    }
+
+    @Test
+    void create_syncTaskValidationFailure_keeps400AndCarriesOptimizationId() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.badRequest("岗位分析已失效或已过期，请重新创建优化"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        // 执行期复核失败发生在任务落库之后：400 仍保留，但不能丢 optimizationId
+        assertThat(ex.getCode()).isEqualTo(40000);
+        assertThat(ex.getData()).isEqualTo(Map.of("optimizationId", 301L));
+    }
+
+    @Test
+    void create_syncOverlongRejection_recordsFailureWithoutSuccessFields() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.aiInvalidOutput(
+                "生成的优化稿超过长度限制（8000 字符），未保存为有效优化结果"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50201);
+        assertThat(ex.getMessage()).contains("超过长度限制");
+        verify(stateService).fail(eq(301L), eq("attempt-1"), contains("超过长度限制"), nullable(String.class));
+        // 被拒绝的正文不得进入成功落库路径
+        verify(stateService, never()).complete(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_syncChangeInformationLoss_recordsFailureWithoutSuccessFields() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.aiInvalidOutput(
+                "变更记录清洗存在信息损失（输入 2 条，保留 1 条，措辞守卫 1），无法证明正文改动已完整核对"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50201);
+        assertThat(ex.getMessage()).contains("信息损失");
+        verify(stateService).fail(eq(301L), eq("attempt-1"), contains("信息损失"), nullable(String.class));
+        verify(stateService, never()).complete(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_syncNumericFactFailure_recordsFailureWithoutSuccessFields() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.aiInvalidOutput(
+                "优化结果未通过事实校验，未保存：优化稿第 1 处数值与原文的单位、指标、对象或上下文不一致"
+                        + "（可疑数字篡改，需人工确认）"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50201);
+        assertThat(ex.getMessage()).contains("事实校验");
+        verify(stateService).fail(eq(301L), eq("attempt-1"), contains("事实校验"), nullable(String.class));
+        verify(stateService, never()).complete(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_syncCoverageFailure_recordsFailureWithoutSuccessFields() {
+        stubSyncFailurePath();
+        doThrow(BusinessException.aiInvalidOutput(
+                "优化结果未通过事实校验，未保存：changes[0] 涉及跨章节移动事实（当前版本不支持）"))
+                .when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50201);
+        assertThat(ex.getMessage()).contains("跨章节");
+        verify(stateService).fail(eq(301L), eq("attempt-1"), contains("跨章节"), nullable(String.class));
+        verify(stateService, never()).complete(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void create_syncUnexpectedFailure_wrapsAs500WithOptimizationId() {
+        stubSyncFailurePath();
+        doThrow(new IllegalStateException("boom")).when(taskRunner).run(301L, "attempt-1");
+
+        BusinessException ex = catchThrowableOfType(
+                () -> service.create(USER_ID, request()), BusinessException.class);
+
+        assertThat(ex.getCode()).isEqualTo(50000);
+        assertThat(ex.getMessage()).isEqualTo("任务执行失败，请稍后重试");
+        assertThat(ex.getData()).isEqualTo(Map.of("optimizationId", 301L));
+        verify(stateService).fail(eq(301L), eq("attempt-1"), eq("boom"), nullable(String.class));
+    }
+
+    @Test
     void retry_onlyFailedTaskCanBeRetried() {
         ResumeOptimization record = storedRecord();
         record.setStatus(ResumeOptimization.STATUS_SUCCESS);
@@ -223,6 +341,59 @@ class ResumeOptimizationServiceTest {
         assertThatThrownBy(() -> service.retry(USER_ID, 301L))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("仅失败的任务可以重试");
+    }
+
+    // ---------------------------------------------------------------- 列表（O-09）
+
+    @Test
+    void list_allPendingWithoutMatchRecord_returnsTaskRows() {
+        assertListWithoutMatchRecords(ResumeOptimization.STATUS_PENDING);
+    }
+
+    @Test
+    void list_allProcessingWithoutMatchRecord_returnsTaskRows() {
+        assertListWithoutMatchRecords(ResumeOptimization.STATUS_PROCESSING);
+    }
+
+    @Test
+    void list_allFailedWithoutMatchRecord_returnsTaskRows() {
+        assertListWithoutMatchRecords(ResumeOptimization.STATUS_FAILED);
+    }
+
+    @Test
+    void list_mixedStates_keepsMatchDataForCompletedRows() {
+        ResumeOptimization success = taskRecord(301L, ResumeOptimization.STATUS_SUCCESS, 501L);
+        success.setScoreAfter(new BigDecimal("80.00"));
+        ResumeOptimization failed = taskRecord(302L, ResumeOptimization.STATUS_FAILED, null);
+        stubListQueries(List.of(success, failed), List.of(matchRecord()));
+
+        PageResult<ResumeOptimizationView> result = service.list(USER_ID, new PageQuery());
+
+        assertThat(result.getRecords()).hasSize(2);
+        ResumeOptimizationView completed = result.getRecords().get(0);
+        assertThat(completed.getStatus()).isEqualTo(ResumeOptimization.STATUS_SUCCESS);
+        assertThat(completed.getMatchScore()).isEqualTo(75.75);
+        assertThat(completed.getScoreAfter()).isEqualTo(80.0);
+        ResumeOptimizationView stillFailed = result.getRecords().get(1);
+        assertThat(stillFailed.getStatus()).isEqualTo(ResumeOptimization.STATUS_FAILED);
+        assertThat(stillFailed.getMatchScore()).isNull();
+        assertThat(stillFailed.getScoreAfter()).isNull();
+    }
+
+    @Test
+    void list_successRecord_displaysMatchScoresAndNames() {
+        ResumeOptimization success = taskRecord(301L, ResumeOptimization.STATUS_SUCCESS, 501L);
+        success.setScoreAfter(new BigDecimal("80.00"));
+        stubListQueries(List.of(success), List.of(matchRecord()));
+
+        PageResult<ResumeOptimizationView> result = service.list(USER_ID, new PageQuery());
+
+        ResumeOptimizationView view = result.getRecords().get(0);
+        assertThat(view.getMatchScore()).isEqualTo(75.75);
+        assertThat(view.getScoreAfter()).isEqualTo(80.0);
+        assertThat(view.getResumeName()).isEqualTo("Java后端简历");
+        assertThat(view.getJobName()).isEqualTo("Java 后端开发实习生");
+        assertThat(view.getCompanyName()).isEqualTo("示例科技");
     }
 
     // ---------------------------------------------------------------- 保存编辑稿
@@ -332,6 +503,69 @@ class ResumeOptimizationServiceTest {
     }
 
     // ---------------------------------------------------------------- 辅助
+
+    /** O-09：当页全部为无 match_record 的任务行时，列表仍能正常装配 */
+    private void assertListWithoutMatchRecords(String status) {
+        stubListQueries(List.of(
+                taskRecord(301L, status, null),
+                taskRecord(302L, status, null)), List.of());
+
+        PageResult<ResumeOptimizationView> result = service.list(USER_ID, new PageQuery());
+
+        assertThat(result.getRecords()).hasSize(2);
+        assertThat(result.getTotal()).isEqualTo(2L);
+        assertThat(result.getRecords()).allSatisfy(view -> {
+            assertThat(view.getStatus()).isEqualTo(status);
+            assertThat(view.getMatchScore()).isNull();
+            assertThat(view.getScoreAfter()).isNull();
+            assertThat(view.getResumeName()).isEqualTo("Java后端简历");
+            assertThat(view.getJobName()).isEqualTo("Java 后端开发实习生");
+        });
+    }
+
+    private void stubListQueries(List<ResumeOptimization> records, List<MatchRecord> matches) {
+        when(optimizationMapper.selectPage(any(), any())).thenAnswer(invocation -> {
+            Page<ResumeOptimization> page = invocation.getArgument(0);
+            page.setRecords(records);
+            page.setTotal(records.size());
+            return page;
+        });
+        when(resumeMapper.selectList(any())).thenReturn(List.of(resume()));
+        when(jobMapper.selectList(any())).thenReturn(List.of(job()));
+        if (!matches.isEmpty()) {
+            when(matchRecordMapper.selectList(any())).thenReturn(matches);
+        }
+    }
+
+    /** 同步降级失败路径：只 stub 走到异常前所需的依赖，避免 Mockito 严格模式下的多余 stub */
+    private void stubSyncFailurePath() {
+        when(resumeService.getOwnedResume(USER_ID, RESUME_ID)).thenReturn(resume());
+        when(jobService.getOwnedJob(USER_ID, JOB_ID)).thenReturn(job());
+        when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis());
+        when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis());
+        when(optimizationMapper.selectOne(any())).thenReturn(null);
+        doAnswer(invocation -> {
+            ResumeOptimization record = invocation.getArgument(0);
+            record.setId(301L);
+            return 1;
+        }).when(optimizationMapper).insert(any(ResumeOptimization.class));
+        when(streamProducerProvider.getIfAvailable()).thenReturn(null);
+        when(stateService.markProcessing(301L)).thenReturn("attempt-1");
+    }
+
+    private static ResumeOptimization taskRecord(Long id, String status, Long matchRecordId) {
+        ResumeOptimization record = new ResumeOptimization();
+        record.setId(id);
+        record.setUserId(USER_ID);
+        record.setResumeId(RESUME_ID);
+        record.setJobId(JOB_ID);
+        record.setMatchRecordId(matchRecordId);
+        record.setVersionNo(1);
+        record.setStatus(status);
+        record.setCreatedAt(LocalDateTime.now());
+        record.setUpdatedAt(LocalDateTime.now());
+        return record;
+    }
 
     private void stubHappyPath() {
         when(resumeService.getOwnedResume(USER_ID, RESUME_ID)).thenReturn(resume());

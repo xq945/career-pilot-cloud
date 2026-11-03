@@ -119,7 +119,7 @@ public abstract class AbstractStreamConsumer<T> implements DisposableBean {
         catch (Exception ex) {
             log.warn("任务执行失败：{} 异常={}", payloadIdentifier(payload), ex.getClass().getSimpleName());
             try {
-                markFailed(payload, attemptId, userFacingMessage(ex));
+                markFailed(payload, attemptId, userFacingMessage(ex), ex);
             }
             catch (Exception markEx) {
                 log.warn("失败状态写入也失败（等待恢复调度兜底）：{} 异常={}",
@@ -189,6 +189,14 @@ public abstract class AbstractStreamConsumer<T> implements DisposableBean {
 
     /** 失败落终态（attemptId 可能为 null——领取阶段即抛异常时无代次可匹配，实现应跳过写入并交给恢复调度） */
     protected abstract void markFailed(T payload, String attemptId, String message);
+
+    /**
+     * 带原始异常的失败落终态（2026-10-21）：子类可据此持久化结构化的失败明细
+     * （如定向优化的完整事实校验问题）。默认退化为三参版本，既有子类无需改动。
+     */
+    protected void markFailed(T payload, String attemptId, String message, Throwable cause) {
+        markFailed(payload, attemptId, message);
+    }
 
     protected int batchSize() {
         return 10;

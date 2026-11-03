@@ -53,7 +53,7 @@ class RepairingStructuredOutputConverter<T> implements StructuredOutputConverter
                 try {
                     T result = delegate.convert(repaired);
                     // 只记场景与长度，不落任何模型输出内容（《Agent设计》§8 脱敏约定）
-                    log.warn("AI 输出修复：未转义引号已本地修复 scene={} 原文长度={} 修复后长度={}",
+                    log.warn("AI 输出修复：未转义引号/控制字符已本地修复 scene={} 原文长度={} 修复后长度={}",
                             scene, text.length(), repaired.length());
                     return result;
                 }

@@ -24,11 +24,15 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    /** 业务异常：按异常自带的 HTTP 状态与业务码返回 */
+    /**
+     * 业务异常：按异常自带的 HTTP 状态与业务码返回。
+     * {@code data} 为 null 时响应与既有契约完全一致；非 null 时为向后兼容的附加信息
+     * （当前仅同步降级失败携带 optimizationId，见 O-16）。
+     */
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
+    public ResponseEntity<ApiResponse<Object>> handleBusiness(BusinessException ex) {
         return ResponseEntity.status(ex.getHttpStatus())
-                .body(ApiResponse.error(ex.getCode(), ex.getMessage()));
+                .body(ApiResponse.error(ex.getCode(), ex.getMessage(), ex.getData()));
     }
 
     /** Bean Validation 校验失败：返回 40001，data 中携带字段级信息 */

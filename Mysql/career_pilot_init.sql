@@ -1,7 +1,7 @@
 -- ============================================================
 -- 智能求职辅助平台 数据库初始化脚本
--- 生成日期：2026-10-15（V1.12，M19）
--- 来源：docs/数据库设计.md（V1.12）
+-- 生成日期：2026-10-20（V1.13，M21）
+-- 来源：docs/数据库设计.md（V1.13）
 -- 用法：mysql -u root -p < career_pilot_init.sql
 -- ============================================================
 
@@ -82,6 +82,7 @@ CREATE TABLE job (
   job_name VARCHAR(100) NOT NULL,
   description LONGTEXT NOT NULL,
   apply_url VARCHAR(500) DEFAULT NULL COMMENT '投递网页链接（用户填写，http/https）',
+  progress_status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '求职进度（M21）：PENDING/APPLIED/WRITTEN/INTERVIEW_1/INTERVIEW_2/HR/OFFER/REJECTED',
   status TINYINT NOT NULL DEFAULT 1 COMMENT '1有效，0已删除（逻辑删除）',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -290,6 +291,7 @@ CREATE TABLE resume_optimization (
   llm_provider_key VARCHAR(50) DEFAULT NULL COMMENT '钉住的模型服务标识（M14：创建时快照，不建外键，见 5.13）',
   status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '任务状态机：PENDING/PROCESSING/SUCCESS/FAILED（M16 扩展）',
   error_message VARCHAR(500) DEFAULT NULL COMMENT '失败原因（M16 起为用户可读文案，随详情返回）',
+  failure_detail LONGTEXT DEFAULT NULL COMMENT '事实校验失败的全部问题（JSON 数组，脱敏；V1.13 新增，成功时清空）',
   attempt_id VARCHAR(36) DEFAULT NULL COMMENT '执行代次围栏（M16）',
   stage VARCHAR(20) DEFAULT NULL COMMENT '当前阶段：MATCHING/GENERATING（M16，PROCESSING 时有值）',
   started_at DATETIME DEFAULT NULL COMMENT '开始执行时间（M16）',
@@ -323,6 +325,11 @@ CREATE TABLE resume_optimization (
 --   ADD COLUMN started_at DATETIME DEFAULT NULL COMMENT '开始执行时间（M16）',
 --   ADD COLUMN finished_at DATETIME DEFAULT NULL COMMENT '终态时间（M16）',
 --   ADD KEY idx_resume_optimization_status_updated (status, updated_at);
+
+-- V1.13 增量（2026-10-21，既有库升级执行；新建库执行上面的完整 DDL 即可）：
+-- 事实校验失败的完整问题清单（error_message 只有 500 字符，仅放汇总）。
+-- ALTER TABLE resume_optimization
+--   ADD COLUMN failure_detail LONGTEXT DEFAULT NULL COMMENT '事实校验失败的全部问题（JSON 数组，脱敏；V1.13 新增，成功时清空）';
 
 -- ============================================================
 -- 12. 模型服务配置（V1.8 新增，M14）

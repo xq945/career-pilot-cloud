@@ -8,6 +8,7 @@ import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
+import org.apache.tika.parser.pdf.PDFParserConfig;
 import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +65,7 @@ public class TextExtractionService {
             Metadata metadata = new Metadata();
             // 文件名参与类型探测；与"扩展名/MIME/内容特征"三重校验相互独立
             metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, file.getOriginalFilename());
-            parser.parse(in, handler, metadata, new ParseContext());
+            parser.parse(in, handler, metadata, pdfContext());
             text = handler.toString();
         }
         catch (IOException | SAXException | TikaException ex) {
@@ -81,6 +82,28 @@ public class TextExtractionService {
         return trimmed.length() > MAX_CONTENT_LENGTH
                 ? trimmed.substring(0, MAX_CONTENT_LENGTH)
                 : trimmed;
+    }
+
+    /**
+     * PDF 解析配置：**关闭书签与批注文本提取**。
+     *
+     * <p>Tika 3.3.2 的 {@code PDFParserConfig.extractBookmarksText} 默认为 true，
+     * 会把 PDF 大纲（书签）的标题当作正文追加到提取结果末尾。简历 PDF 常带
+     * 「基本信息 / 实习经历 / 项目经历 …」大纲，于是入库文本尾部多出一串
+     * TAB 分隔的章节名；定向优化的事实校验按块与章节核对原文证据，重复章节
+     * 会造成大面积误判（2026-10-21 简历 203 实测：连续两次各约 26 项）。
+     *
+     * <p>批注同理：简历中的批注/评论不属于简历事实，默认也会被拼进正文。
+     * 其余默认值（{@code enableAutoSpace} 等）保持不变，避免改变既有 DOCX/TXT
+     * 的输出口径。AutoDetectParser 对非 PDF 文件会忽略该配置。
+     */
+    private static ParseContext pdfContext() {
+        PDFParserConfig config = new PDFParserConfig();
+        config.setExtractBookmarksText(false);
+        config.setExtractAnnotationText(false);
+        ParseContext context = new ParseContext();
+        context.set(PDFParserConfig.class, config);
+        return context;
     }
 
 }

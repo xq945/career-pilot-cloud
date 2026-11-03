@@ -157,7 +157,7 @@ onMounted(async () => {
         <h1>{{ job?.jobName || '岗位 AI 分析' }}</h1>
         <p v-if="job" class="page-head__desc">
           <template v-if="job.companyName">{{ job.companyName }} · </template>
-          描述更新于 {{ formatTime(job.updatedAt) }}
+          更新于 {{ formatTime(job.updatedAt) }}
         </p>
       </div>
       <AnalysisStateTag :analyzed="analyzed" :analyzing="analyzing" :stale="stale" />

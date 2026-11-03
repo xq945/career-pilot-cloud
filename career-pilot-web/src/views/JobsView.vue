@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Briefcase, Plus } from '@element-plus/icons-vue'
 import dayjs from 'dayjs'
 
-import { createJob, getJob, listJobs, removeJob, updateJob } from '@/api/job'
+import { createJob, getJob, listJobs, removeJob, updateJob, updateJobStatus } from '@/api/job'
 import PaginationBar from '@/components/PaginationBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
 
@@ -12,7 +12,8 @@ import StateBlock from '@/components/StateBlock.vue'
  * 岗位管理（《前端原型设计》§5.5，接口《API接口设计》5.1–5.5）。
  *
  * 页面内容：列表（加载 / 空 / 错误 / 正常四态）+ 新建/编辑对话框 + 删除二次确认
- * + 投递入口（M19：岗位填了投递链接时列表出现「投递」按钮，新标签页打开该链接）。
+ * + 投递入口（M19：岗位填了投递链接时列表出现「投递」按钮，新标签页打开该链接）
+ * + 求职进度（M21：列表行内下拉直接切换，走专用的 §5.8 状态接口，不经编辑弹窗）。
  * 与简历管理同构，差异在于：
  * - 岗位是**手输文本**（无文件上传），因此无类型/大小预检；
  * - **可编辑**，列表项**不返回 description**，编辑回填需先取详情（§5.3）。
@@ -22,6 +23,26 @@ import StateBlock from '@/components/StateBlock.vue'
  * 时间字段用 dayjs 解析（API §1：精度不保证，禁止字符串截取）。
  */
 const PAGE_SIZE = 10
+
+/**
+ * 求职进度（M21）：与后端 `Job.PROGRESS_*` 常量一一对应，顺序即下拉展示顺序。
+ * 不设状态机（用户可任意切换/回退）；`type` 仅驱动文字颜色，不改变控件形态。
+ */
+const PROGRESS_OPTIONS = [
+  { value: 'PENDING', label: '待投递', type: 'pending' },
+  { value: 'APPLIED', label: '已投递', type: 'applied' },
+  { value: 'WRITTEN', label: '笔试', type: 'progress' },
+  { value: 'INTERVIEW_1', label: '一面', type: 'progress' },
+  { value: 'INTERVIEW_2', label: '二面', type: 'progress' },
+  { value: 'HR', label: 'HR 面', type: 'progress' },
+  { value: 'OFFER', label: 'Offer', type: 'offer' },
+  { value: 'REJECTED', label: '已拒绝', type: 'rejected' },
+]
+
+const progressOf = (item) => PROGRESS_OPTIONS.find((option) => option.value === item.progressStatus)
+  ?? PROGRESS_OPTIONS[0]
+
+const progressLabel = (value) => PROGRESS_OPTIONS.find((option) => option.value === value)?.label ?? value
 
 /** 投递入口（M19）：新标签页打开用户填写的投递网页；noopener/noreferrer 按外部站点对待 */
 function openApply(item) {
@@ -180,6 +201,39 @@ async function submitForm() {
   }
 }
 
+/* ---------------------------------------------------------------- 求职进度（M21） */
+
+/** 正在提交状态的岗位 id：期间禁用该行下拉，避免连点产生乱序请求 */
+const statusSavingId = ref(null)
+
+/**
+ * 行内切换进度（§5.8）：先乐观更新再请求，失败回滚并提示。
+ *
+ * 不整页 reload 的原因：reload 会把列表滚回顶部、丢失用户的位置；
+ * 接口返回的详情足够更新本行（progressStatus / updatedAt），其余字段不受影响。
+ */
+async function handleStatusChange(item, value) {
+  const previous = item.progressStatus
+  if (value === previous) {
+    return
+  }
+  item.progressStatus = value
+  statusSavingId.value = item.id
+  try {
+    const data = await updateJobStatus(item.id, value)
+    item.progressStatus = data.progressStatus
+    item.updatedAt = data.updatedAt
+    ElMessage.success(`「${item.jobName}」进度已更新为「${progressLabel(data.progressStatus)}」`)
+  }
+  catch (error) {
+    item.progressStatus = previous
+    ElMessage.error(error.message || '状态更新失败，请稍后重试')
+  }
+  finally {
+    statusSavingId.value = null
+  }
+}
+
 /* ---------------------------------------------------------------- 删除 */
 
 /** 删除确认：写清两条后果（§5.5、原型 jobs.html），用 VNode 渲染（转义用户输入，不拼 HTML） */
@@ -273,8 +327,26 @@ async function handleDelete(item) {
               </div>
               <div class="item__meta">
                 <template v-if="item.companyName">{{ item.companyName }} · </template>
-                创建于 {{ formatTime(item.createdAt) }} · 描述更新于 {{ formatTime(item.updatedAt) }}
+                创建于 {{ formatTime(item.createdAt) }} · 更新于 {{ formatTime(item.updatedAt) }}
               </div>
+            </div>
+            <div class="item__status">
+              <el-select
+                :model-value="item.progressStatus"
+                class="status-select"
+                :class="`status-select--${progressOf(item).type}`"
+                size="small"
+                :disabled="statusSavingId === item.id"
+                aria-label="求职进度"
+                @change="(value) => handleStatusChange(item, value)"
+              >
+                <el-option
+                  v-for="option in PROGRESS_OPTIONS"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
             </div>
             <div class="item__actions">
               <el-button v-if="item.applyUrl" size="small" @click="openApply(item)">
@@ -494,6 +566,39 @@ async function handleDelete(item) {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* ---- 求职进度下拉（M21）：宽度固定，避免切换前后行内元素跳动 ---- */
+.item__status {
+  flex: 0 0 auto;
+}
+
+.status-select {
+  width: 108px;
+}
+
+.status-select :deep(.el-select__selected-item) {
+  font-weight: 500;
+}
+
+.status-select--pending :deep(.el-select__selected-item) {
+  color: var(--ink-500);
+}
+
+.status-select--applied :deep(.el-select__selected-item) {
+  color: var(--info);
+}
+
+.status-select--progress :deep(.el-select__selected-item) {
+  color: var(--warn);
+}
+
+.status-select--offer :deep(.el-select__selected-item) {
+  color: var(--ok);
+}
+
+.status-select--rejected :deep(.el-select__selected-item) {
+  color: var(--danger);
 }
 
 /* 多按钮时用 gap 控制间距，去掉 Element Plus 的相邻按钮左边距（避免双份间距） */

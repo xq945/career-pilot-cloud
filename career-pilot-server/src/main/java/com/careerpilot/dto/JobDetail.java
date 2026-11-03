@@ -23,6 +23,9 @@ public class JobDetail {
     /** 投递网页链接（M19 新增）：编辑弹窗回填用 */
     private String applyUrl;
 
+    /** 求职进度（M21）：列表行内切换后由响应回显 */
+    private String progressStatus;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -69,6 +72,14 @@ public class JobDetail {
 
     public void setApplyUrl(String applyUrl) {
         this.applyUrl = applyUrl;
+    }
+
+    public String getProgressStatus() {
+        return progressStatus;
+    }
+
+    public void setProgressStatus(String progressStatus) {
+        this.progressStatus = progressStatus;
     }
 
     public LocalDateTime getCreatedAt() {

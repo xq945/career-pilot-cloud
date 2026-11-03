@@ -17,6 +17,7 @@ import com.careerpilot.dto.JobAnalysisDetail;
 import com.careerpilot.dto.JobAnalysisView;
 import com.careerpilot.dto.JobDetail;
 import com.careerpilot.dto.JobSaveRequest;
+import com.careerpilot.dto.JobStatusRequest;
 import com.careerpilot.dto.JobView;
 import com.careerpilot.security.CurrentUser;
 import com.careerpilot.service.JobAnalysisService;
@@ -25,7 +26,7 @@ import com.careerpilot.service.JobService;
 import jakarta.validation.Valid;
 
 /**
- * 岗位接口（《API接口设计》5.1–5.7）。
+ * 岗位接口（《API接口设计》5.1–5.8）。
  *
  * 用户身份一律取自认证上下文，不接受前端传入的 userId（《系统架构设计》4.1）。
  */
@@ -68,6 +69,18 @@ public class JobController {
     public ApiResponse<JobDetail> update(@PathVariable Long id,
                                          @Valid @RequestBody JobSaveRequest request) {
         return ApiResponse.success(jobService.update(CurrentUser.requireId(), id, request));
+    }
+
+    /**
+     * 求职进度切换（5.8，M21）：只改状态，不动描述与其他字段；返回最新详情。
+     *
+     * 八个枚举值之外的输入由 DTO 的 `@Pattern` 返回 40001，服务层再兜底一次。
+     */
+    @PutMapping("/{id}/status")
+    public ApiResponse<JobDetail> updateProgressStatus(@PathVariable Long id,
+                                                       @Valid @RequestBody JobStatusRequest request) {
+        return ApiResponse.success(jobService.updateProgressStatus(
+                CurrentUser.requireId(), id, request.getStatus()));
     }
 
     /** 删除岗位（5.5）：逻辑删除，关联分析记录保留；重复删除幂等成功 */

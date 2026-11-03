@@ -271,7 +271,7 @@ try {
     (await page.evaluate(`document.querySelectorAll('.item .el-tag').length`)) === 0)
   const metaText = await page.textOf('.item__meta')
   check('   列表项显示公司与创建/更新时间',
-    metaText.includes(COMPANY) && metaText.includes('创建于') && metaText.includes('描述更新于'),
+    metaText.includes(COMPANY) && metaText.includes('创建于') && metaText.includes('更新于'),
     metaText.replace(/\s+/g, ' ').slice(0, 60))
   await shot('03-list-created')
 
@@ -355,8 +355,8 @@ try {
   check('⑤ 修改岗位描述后 stale 立即为 true（验收标准 1，接口层）',
     staleJob.data?.stale === true, String(staleJob.data?.stale))
   const metaAfter = await page.textOf('.item__meta')
-  check('   列表项显示「描述更新于」已刷新',
-    metaAfter.includes('描述更新于'), metaAfter.replace(/\s+/g, ' ').slice(0, 60))
+  check('   列表项显示「更新于」已刷新',
+    metaAfter.includes('更新于'), metaAfter.replace(/\s+/g, ' ').slice(0, 60))
   await shot('06-list-updated')
 
   // ------------------------------------------------------------ ⑤ 详情页警告条与降对比度

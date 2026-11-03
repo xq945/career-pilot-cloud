@@ -11,8 +11,10 @@ import com.careerpilot.ai.AiOutputElement;
  * <p>继承 {@link AiOutputElement}：元素内出现约定外字段时收集并记日志后丢弃。
  *
  * <p>{@code before} / {@code after} 是"真实性"的主要举证方式：前者必须逐字来自简历原文，
- * 后者必须能在优化稿中找到——该约束由提示词与用户审阅保证，代码层不做文本包含性硬校验
- * （中文改写场景误杀率高，见《简历定向优化重构方案》§6.3）。
+ * 后者必须能在优化稿中找到。代码层并非只靠提示词：清洗后的产物会由
+ * {@code ResumeOptimizationFactChecker} 在规范化后做包含性校验，并检查证据强度、
+ * 数字上下文与正文覆盖账本。中文改写场景的误杀由“规范化 + 证据强度 + 风险分级”控制，
+ * 而不是放弃校验（见《简历定向优化重构方案》§6.3 与第三阶段修复 A/C）。
  */
 public class ChangeItem extends AiOutputElement {
 

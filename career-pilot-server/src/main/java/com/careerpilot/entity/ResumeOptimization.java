@@ -117,6 +117,15 @@ public class ResumeOptimization {
 
     private String errorMessage;
 
+    /**
+     * 事实校验失败的完整问题清单（JSON 数组，2026-10-21 新增）。
+     *
+     * <p>error_message 受 500 字符限制只能放汇总；本列保存全部 issue
+     * （{@code category/severity/message/changeIndex}，message 已脱敏），
+     * 供详情页展开查看。成功时由 {@code complete} 显式清空。
+     */
+    private String failureDetail;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -303,6 +312,14 @@ public class ResumeOptimization {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getFailureDetail() {
+        return failureDetail;
+    }
+
+    public void setFailureDetail(String failureDetail) {
+        this.failureDetail = failureDetail;
     }
 
     public LocalDateTime getCreatedAt() {

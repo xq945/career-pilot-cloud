@@ -209,6 +209,82 @@ class JobServiceTest {
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
     }
 
+    // ---------------------------------------------------------------- 求职进度（M21）
+
+    @Test
+    void create_defaultsProgressToPending() {
+        JobDetail detail = service.create(1L, request("示例科技", "岗位", "描述"));
+
+        assertThat(detail.getProgressStatus()).isEqualTo(Job.PROGRESS_PENDING);
+    }
+
+    @Test
+    void list_exposesProgressStatus() {
+        Job applied = job(1L, "岗位A", "描述A");
+        applied.setProgressStatus(Job.PROGRESS_APPLIED);
+        doReturn(pageOf(applied)).when(jobMapper).selectPage(any(), any());
+        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of());
+
+        PageResult<JobView> result = service.list(1L, new PageQuery());
+
+        assertThat(result.getRecords().get(0).getProgressStatus()).isEqualTo(Job.PROGRESS_APPLIED);
+    }
+
+    @Test
+    void updateProgressStatus_anyTransitionAllowedAndUpdatedAtRefreshed() {
+        Job existing = job(5L, "岗位", "描述");
+        existing.setProgressStatus(Job.PROGRESS_PENDING);
+        LocalDateTime before = LocalDateTime.now().minusDays(1).withNano(0);
+        existing.setUpdatedAt(before);
+        when(jobMapper.selectOne(any())).thenReturn(existing);
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(null);
+
+        // 任意状态互转（含直接跳到终态，不设状态机）
+        JobDetail detail = service.updateProgressStatus(1L, 5L, Job.PROGRESS_OFFER);
+
+        assertThat(detail.getProgressStatus()).isEqualTo(Job.PROGRESS_OFFER);
+        assertThat(detail.getUpdatedAt()).isAfter(before);   // 内存装配的显式刷新值
+        assertThat(detail.isAnalyzed()).isFalse();
+    }
+
+    @Test
+    void updateProgressStatus_rejectsUnknownValue() {
+        when(jobMapper.selectOne(any())).thenReturn(job(5L, "岗位", "描述"));
+
+        assertThatThrownBy(() -> service.updateProgressStatus(1L, 5L, "WISHFUL_THINKING"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+        assertThatThrownBy(() -> service.updateProgressStatus(1L, 5L, null))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+        // 小写不接受（枚举值大小写敏感，与 DTO 的 @Pattern 同一口径）
+        assertThatThrownBy(() -> service.updateProgressStatus(1L, 5L, "offer"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40000));
+    }
+
+    @Test
+    void updateProgressStatus_missingOrForeign_throws404() {
+        when(jobMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> service.updateProgressStatus(1L, 5L, Job.PROGRESS_APPLIED))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo(40400));
+    }
+
+    @Test
+    void update_fullUpdateKeepsProgressStatus() {
+        Job existing = job(5L, "旧岗位名", "旧描述");
+        existing.setProgressStatus(Job.PROGRESS_HR);
+        when(jobMapper.selectOne(any())).thenReturn(existing);
+        when(jobAnalysisMapper.selectOne(any())).thenReturn(null);
+
+        // 编辑弹窗只改描述类字段：重填表单不会把进度打回「待投递」
+        JobDetail detail = service.update(1L, 5L, request("示例科技", "新岗位名", "新描述"));
+
+        assertThat(detail.getProgressStatus()).isEqualTo(Job.PROGRESS_HR);
+    }
+
     // ---------------------------------------------------------------- 测试数据
 
     private static Job job(Long id, String jobName, String description) {

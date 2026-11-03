@@ -31,6 +31,9 @@ public class OptimizationTaskStateService {
 
     private static final Logger log = LoggerFactory.getLogger(OptimizationTaskStateService.class);
 
+    /** 校验明细入库上限（LONGTEXT 可容纳更多，但拒绝把异常级数据带入库） */
+    private static final int FAILURE_DETAIL_LIMIT = 20000;
+
     private final ResumeOptimizationMapper optimizationMapper;
 
     public OptimizationTaskStateService(ResumeOptimizationMapper optimizationMapper) {
@@ -55,7 +58,9 @@ public class OptimizationTaskStateService {
                 .eq(ResumeOptimization::getId, optimizationId)
                 .eq(ResumeOptimization::getStatus, ResumeOptimization.STATUS_PENDING)
                 // 显式清空：MP 的实体更新会**跳过 null 字段**，清空类字段必须走 wrapper.set
-                .set(ResumeOptimization::getErrorMessage, null));
+                .set(ResumeOptimization::getErrorMessage, null)
+                // 重新领取时清空上一次失败留下的校验明细（V1.13）
+                .set(ResumeOptimization::getFailureDetail, null));
         if (updated == 1) {
             log.info("任务已领取：optimizationId={} attemptId={}", optimizationId, attemptId);
             return attemptId;
@@ -98,8 +103,9 @@ public class OptimizationTaskStateService {
                 .eq(ResumeOptimization::getId, optimizationId)
                 .eq(ResumeOptimization::getStatus, ResumeOptimization.STATUS_PROCESSING)
                 .eq(ResumeOptimization::getAttemptId, attemptId)
-                // 显式清空 stage（MP 实体更新跳过 null，见 markProcessing 的说明）
-                .set(ResumeOptimization::getStage, null));
+                // 显式清空 stage 与失败明细（MP 实体更新跳过 null，见 markProcessing 的说明）
+                .set(ResumeOptimization::getStage, null)
+                .set(ResumeOptimization::getFailureDetail, null));
         if (updated == 1) {
             log.info("任务已完成并落库：optimizationId={} matchRecordId={}", optimizationId, matchRecordId);
             return true;
@@ -114,6 +120,15 @@ public class OptimizationTaskStateService {
      * {@code attemptId} 为 null（领取阶段即失败）时**不写入**——让恢复调度按 PENDING 超时兜底。
      */
     public void fail(Long optimizationId, String attemptId, String message) {
+        fail(optimizationId, attemptId, message, null);
+    }
+
+    /**
+     * 失败落终态，附带事实校验的完整问题清单（V1.13）。
+     *
+     * @param failureDetail JSON 数组文本（已脱敏）；null 表示不是事实校验失败，不写入该列
+     */
+    public void fail(Long optimizationId, String attemptId, String message, String failureDetail) {
         if (attemptId == null) {
             log.warn("失败时无执行代次（领取阶段异常），交由恢复调度兜底：optimizationId={}", optimizationId);
             return;
@@ -122,6 +137,9 @@ public class OptimizationTaskStateService {
         ResumeOptimization patch = new ResumeOptimization();
         patch.setStatus(ResumeOptimization.STATUS_FAILED);
         patch.setErrorMessage(truncate(message, 500));
+        if (failureDetail != null && !failureDetail.isBlank()) {
+            patch.setFailureDetail(truncate(failureDetail, FAILURE_DETAIL_LIMIT));
+        }
         patch.setStage(null);
         patch.setFinishedAt(now);
         patch.setUpdatedAt(now);

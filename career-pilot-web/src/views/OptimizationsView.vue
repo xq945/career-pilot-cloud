@@ -7,6 +7,7 @@ import dayjs from 'dayjs'
 
 import { analyzeJob, createJob } from '@/api/job'
 import { createOptimization, listOptimizations } from '@/api/optimization'
+import { resolveSubmitFeedback, resolveSubmitSuccess } from '@/utils/optimizationSubmit'
 import AiWaiting from '@/components/AiWaiting.vue'
 import PaginationBar from '@/components/PaginationBar.vue'
 import ResourcePicker from '@/components/ResourcePicker.vue'
@@ -22,8 +23,9 @@ import StateBlock from '@/components/StateBlock.vue'
  *   每步独立超时、进度可见、失败可定位。岗位一旦创建成功即记住 ID，
  *   重试时不重复建岗位（后端不提供"临时 JD"入参，见 §6A.1）。
  *
- * 创建优化为同步调用（通常 25–80 秒）：等待态在弹窗内呈现；502 失败时明确
- * 「本次未产生优化记录、可重试」；成功后跳转工作台。
+ * 创建优化 M16 起为异步任务：等待态在弹窗内呈现；失败时区分「未创建 /
+ * 已创建但执行失败 / 结果未知」，已创建但失败的由后端带回 optimizationId，
+ * 可直接打开详情查看原因并重试；成功后跳转工作台。
  */
 const PAGE_SIZE = 10
 
@@ -207,14 +209,17 @@ async function submit() {
     step.value = 'optimizing'
     const data = await createOptimization({ resumeId: resumeId.value, jobId: targetJobId })
     dialogVisible.value = false
-    ElMessage.success('已提交，优化任务在后台执行')
+    ElMessage.success(resolveSubmitSuccess(data.status))
     router.push({ name: 'optimization-detail', params: { id: data.id } })
   }
   catch (error) {
+    // O-16：不能只看错误码就断言“未产生记录”——同步降级失败时后端已留下
+    // FAILED 记录并带回 optimizationId；无法确认时提示去列表查看。
+    const feedback = resolveSubmitFeedback({ error, failedStep: step.value })
     submitError.value = {
       code: error.code,
-      message: error.message || '优化失败，请稍后重试',
-      failedStep: step.value,
+      text: feedback.text,
+      taskId: feedback.taskId,
     }
   }
   finally {
@@ -223,23 +228,15 @@ async function submit() {
   }
 }
 
-/** 失败文案：502 系列强调「未产生记录、可重试」；手动输入的失败定位到步骤 */
-const submitErrorText = computed(() => {
-  if (!submitError.value) {
-    return ''
+/** 打开已创建但执行失败的任务（详情页展示失败原因与重试入口） */
+function openFailedTask() {
+  if (!submitError.value?.taskId) {
+    return
   }
-  const { code, message, failedStep } = submitError.value
-  if (failedStep === 'creating-job') {
-    return `创建岗位失败：${message}`
-  }
-  if (failedStep === 'analyzing-job') {
-    return `岗位已创建，但分析失败：${message}（可重试，不会重复创建岗位）`
-  }
-  if (code === 50200 || code === 50201) {
-    return `${message}（本次未产生优化记录，可以重试）`
-  }
-  return message
-})
+  const failedTaskId = submitError.value.taskId
+  dialogVisible.value = false
+  router.push({ name: 'optimization-detail', params: { id: failedTaskId } })
+}
 </script>
 
 <template>
@@ -399,8 +396,16 @@ const submitErrorText = computed(() => {
           :closable="false"
           show-icon
         >
-          {{ submitErrorText }}
+          {{ submitError.text }}
         </el-alert>
+        <el-button
+          v-if="submitError?.taskId"
+          class="tip"
+          size="small"
+          @click="openFailedTask"
+        >
+          查看任务
+        </el-button>
 
         <el-alert class="tip" type="info" :closable="false" show-icon>
           <p class="dialog__note">

@@ -93,6 +93,12 @@ public class ResumeOptimizationDetail {
     /** M16：失败原因（用户可读；仅 FAILED 有值） */
     private String errorMessage;
 
+    /**
+     * V1.13：事实校验失败的完整问题清单（脱敏；仅因校验失败的任务有值）。
+     * errorMessage 只含前 5 项汇总，本字段供详情页展开全部问题。
+     */
+    private List<OptimizationFailureIssue> failureIssues;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
@@ -327,6 +333,14 @@ public class ResumeOptimizationDetail {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public List<OptimizationFailureIssue> getFailureIssues() {
+        return failureIssues;
+    }
+
+    public void setFailureIssues(List<OptimizationFailureIssue> failureIssues) {
+        this.failureIssues = failureIssues;
     }
 
     public LocalDateTime getCreatedAt() {

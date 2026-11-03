@@ -14,10 +14,14 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.ai.AiCallResult;
+import com.careerpilot.dto.OptimizationFailureIssue;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.PageQuery;
 import com.careerpilot.common.PageResult;
@@ -44,6 +48,7 @@ import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.ResumeAiService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
+import com.careerpilot.service.optimization.OptimizationFactCheckException;
 import com.careerpilot.service.optimization.OptimizationStreamProducer;
 import com.careerpilot.service.optimization.OptimizationTaskRunner;
 import com.careerpilot.service.optimization.OptimizationTaskStateService;
@@ -70,6 +75,9 @@ import com.careerpilot.service.optimization.OptimizationTaskStateService;
 public class ResumeOptimizationService {
 
     private static final Logger log = LoggerFactory.getLogger(ResumeOptimizationService.class);
+
+    /** 校验明细的反序列化器（只读自身写入的 JSON，不涉及用户输入） */
+    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
     /** 编辑历史保留上限（《数据库设计》5.11：超出丢弃最旧） */
     private static final int EDIT_HISTORY_LIMIT = 10;
@@ -226,10 +234,31 @@ public class ResumeOptimizationService {
             taskRunner.run(optimizationId, attemptId);
         }
         catch (RuntimeException ex) {
+            // 事实校验失败时一并保存完整问题清单（V1.13）；erro_message 仍是 500 字符汇总
+            String failureDetail = ex instanceof OptimizationFactCheckException factCheck
+                    ? factCheck.failureDetailJson()
+                    : null;
             stateService.fail(optimizationId, attemptId,
-                    ex.getMessage() == null ? "任务执行失败" : ex.getMessage());
-            throw ex;
+                    ex.getMessage() == null ? "任务执行失败" : ex.getMessage(), failureDetail);
+            // O-16：任务行已落库并置为 FAILED，错误响应带上 ID，前端据此提示
+            // “已创建但执行失败”，而不是“未产生记录”。
+            throw withOptimizationId(ex, optimizationId);
         }
+    }
+
+    /**
+     * 同步降级执行失败的业务异常包装：保留原业务码与文案，附加 {@code optimizationId}。
+     * 非业务异常（如 NPE）统一按 50000 包装，任务记录同样已存在。
+     */
+    private static BusinessException withOptimizationId(RuntimeException ex, Long optimizationId) {
+        Map<String, Object> data = Map.of("optimizationId", optimizationId);
+        if (ex instanceof BusinessException business) {
+            return new BusinessException(business.getCode(), business.getHttpStatus(),
+                    business.getMessage(), data);
+        }
+        // 非业务异常包装成 BusinessException 后不会走 handleUnexpected，堆栈在此保留
+        log.error("同步优化任务执行失败：optimizationId={}", optimizationId, ex);
+        return new BusinessException(50000, 500, "任务执行失败，请稍后重试", data);
     }
 
     // ---------------------------------------------------------------- 手动重试（6A.7）
@@ -301,7 +330,7 @@ public class ResumeOptimizationService {
 
         List<ResumeOptimizationView> views = records.stream()
                 .map(record -> toView(record, resumes.get(record.getResumeId()), jobs.get(record.getJobId()),
-                        matches.get(record.getMatchRecordId())))
+                        record.getMatchRecordId() == null ? null : matches.get(record.getMatchRecordId())))
                 .toList();
         return PageResult.of(result, views);
     }
@@ -468,7 +497,9 @@ public class ResumeOptimizationService {
                 .filter(id -> id != null)
                 .distinct().toList();
         if (ids.isEmpty()) {
-            return Map.of();
+            // O-09：必须返回**允许 null key 查询**的 Map（HashMap）；Map.of() 在
+            // get(null) 时抛 NPE，当页全部为 PENDING/PROCESSING/FAILED 时列表 500。
+            return new HashMap<>();
         }
         Map<Long, MatchRecord> matches = new HashMap<>();
         for (MatchRecord record : matchRecordMapper.selectList(Wrappers.<MatchRecord>lambdaQuery()
@@ -507,6 +538,7 @@ public class ResumeOptimizationService {
         // M16：任务控制字段（详情页轮询进度 / 失败文案与重试入口）
         detail.setStage(record.getStage());
         detail.setErrorMessage(record.getErrorMessage());
+        detail.setFailureIssues(parseFailureIssues(record));
         detail.setCreatedAt(record.getCreatedAt());
         detail.setUpdatedAt(record.getUpdatedAt());
 
@@ -538,6 +570,27 @@ public class ResumeOptimizationService {
         detail.setDimensionScoresAfter(record.getDimensionScoresAfter());
         detail.setEvaluatedAt(record.getEvaluatedAt());
         return detail;
+    }
+
+    /**
+     * 解析失败明细（V1.13）。明细是本服务写入的受控 JSON，解析失败说明数据损坏，
+     * 记 WARN 后按无明细返回，不影响失败态的其余字段展示。
+     */
+    private static List<OptimizationFailureIssue> parseFailureIssues(ResumeOptimization record) {
+        String json = record.getFailureDetail();
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return MAPPER.readValue(json,
+                    MAPPER.getTypeFactory().constructCollectionType(List.class,
+                            OptimizationFailureIssue.class));
+        }
+        catch (RuntimeException ex) {
+            log.warn("优化失败明细解析失败：optimizationId={} 异常={}",
+                    record.getId(), ex.getClass().getSimpleName());
+            return null;
+        }
     }
 
     /** M16：产物类操作（编辑 / 评估 / 导出 / 面试来源装配）要求任务已成功完成 */

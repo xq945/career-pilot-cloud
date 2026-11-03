@@ -23,7 +23,7 @@ import com.careerpilot.mapper.JobAnalysisMapper;
 import com.careerpilot.mapper.JobMapper;
 
 /**
- * 岗位服务（《API接口设计》5.1–5.5）：CRUD + `analyzed` / `stale` 判定。
+ * 岗位服务（《API接口设计》5.1–5.5、5.8）：CRUD + `analyzed` / `stale` 判定 + 求职进度切换。
  *
  * 与简历模块同构，差异只在两处：
  * 1. 岗位是**手输文本**（Bean Validation 校验），无文件与文本提取；
@@ -61,6 +61,8 @@ public class JobService {
         job.setDescription(request.getDescription());
         // 投递链接是**普通可空文本**（不是 hash 基准），与公司名同样归一：空串 → null，其余 trim
         job.setApplyUrl(normalizeApplyUrl(request.getApplyUrl()));
+        // 新岗位的求职进度一律从「待投递」开始（M21）；库列也有 DEFAULT，此处显式赋值使装配不依赖默认值
+        job.setProgressStatus(Job.PROGRESS_PENDING);
         job.setStatus(Job.STATUS_ACTIVE);
         // 显式设置时间：MP 的 insert 不会回读数据库默认值（同 ResumeService.upload）；
         // 裁到秒与 DATETIME(0) 对齐（MySQL 对低精度目标按舍入处理，不裁会出现跨接口 1 秒抖动）
@@ -103,6 +105,9 @@ public class JobService {
      * 不刷新**——用户原样再保存一次（幂等提交）时，若靠 DB 自动刷新或更新后重查，
      * 拿到的会是旧值，违反 §5.4「updatedAt 已刷新」的契约。
      * 响应采用**内存装配**（同 {@code UserService.updateProfile}），不回查。
+     *
+     * 本接口**不修改** progressStatus（M21）：编辑弹窗只编辑描述类字段，状态由
+     * {@link #updateProgressStatus} 单独维护，重填表单不会把进度打回「待投递」。
      */
     public JobDetail update(Long userId, Long id, JobSaveRequest request) {
         Job job = getOwnedJob(userId, id);
@@ -132,6 +137,36 @@ public class JobService {
         // 描述变化后，旧分析的 source_hash 与之不再一致 → stale=true（§5.4）
         JobAnalysis latest = findLatestSuccess(id);
         return toDetail(job, latest != null, JobAnalysisService.isStale(description, latest));
+    }
+
+    /**
+     * 求职进度切换（5.8，M21）：只改 progressStatus 与 updatedAt，不动描述与其他字段。
+     *
+     * 单独成接口（而非复用全量 PUT）的原因：全量更新语义要求提交全部字段，
+     * 列表行内切换若走 PUT 就得先取详情再整份回传，既多余又容易覆盖掉并发编辑；
+     * 与 M17 面试日程的状态流转（`PUT /interview-schedules/{id}/status`）同一模式。
+     *
+     * **不设状态机**：求职进度可任意切换/回退（用户可能录错或环节回退），
+     * 只做枚举白名单校验；服务层兜底 `@Pattern`，防绕过 DTO 校验的调用路径。
+     * updated_at 显式写入并裁到秒（同 {@link #update}，不依赖 ON UPDATE 的刷新时机）。
+     */
+    public JobDetail updateProgressStatus(Long userId, Long id, String progressStatus) {
+        Job job = getOwnedJob(userId, id);
+        if (!Job.isValidProgressStatus(progressStatus)) {
+            throw BusinessException.badRequest("状态不合法");
+        }
+        LocalDateTime now = LocalDateTime.now().withNano(0);
+        jobMapper.update(null, Wrappers.<Job>lambdaUpdate()
+                .eq(Job::getId, id)
+                .eq(Job::getUserId, userId)
+                .eq(Job::getStatus, Job.STATUS_ACTIVE)
+                .set(Job::getProgressStatus, progressStatus)
+                .set(Job::getUpdatedAt, now));
+
+        job.setProgressStatus(progressStatus);
+        job.setUpdatedAt(now);
+        JobAnalysis latest = findLatestSuccess(id);
+        return toDetail(job, latest != null, JobAnalysisService.isStale(job.getDescription(), latest));
     }
 
     /**
@@ -220,6 +255,7 @@ public class JobService {
         view.setCompanyName(job.getCompanyName());
         view.setJobName(job.getJobName());
         view.setApplyUrl(job.getApplyUrl());
+        view.setProgressStatus(progressOf(job));
         view.setCreatedAt(job.getCreatedAt());
         view.setUpdatedAt(job.getUpdatedAt());
         view.setAnalyzed(latest != null);
@@ -235,11 +271,20 @@ public class JobService {
         detail.setJobName(job.getJobName());
         detail.setDescription(job.getDescription());
         detail.setApplyUrl(job.getApplyUrl());
+        detail.setProgressStatus(progressOf(job));
         detail.setCreatedAt(job.getCreatedAt());
         detail.setUpdatedAt(job.getUpdatedAt());
         detail.setAnalyzed(analyzed);
         detail.setStale(stale);
         return detail;
+    }
+
+    /**
+     * 库列 NOT NULL DEFAULT 'PENDING'，正常读出的值不会为 null；
+     * 兜底仅为装配稳健（如迁移前的老行、测试夹具未赋值），避免下游拿到 null 状态。
+     */
+    private static String progressOf(Job job) {
+        return job.getProgressStatus() == null ? Job.PROGRESS_PENDING : job.getProgressStatus();
     }
 
     /** 空串/全空白 → null（清空公司名的语义，与 UserService.normalizeNickname 一致）；其余 trim */

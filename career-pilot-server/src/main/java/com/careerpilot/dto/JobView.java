@@ -23,6 +23,9 @@ public class JobView {
     /** 投递网页链接（M19 新增）：非空时列表渲染「投递」按钮，为空/缺省则按钮不显示 */
     private String applyUrl;
 
+    /** 求职进度（M21）：PENDING/APPLIED/WRITTEN/INTERVIEW_1/INTERVIEW_2/HR/OFFER/REJECTED */
+    private String progressStatus;
+
     private LocalDateTime createdAt;
 
     /** 描述更新时间（列表展示「描述更新于 …」用） */
@@ -62,6 +65,14 @@ public class JobView {
 
     public void setApplyUrl(String applyUrl) {
         this.applyUrl = applyUrl;
+    }
+
+    public String getProgressStatus() {
+        return progressStatus;
+    }
+
+    public void setProgressStatus(String progressStatus) {
+        this.progressStatus = progressStatus;
     }
 
     public LocalDateTime getCreatedAt() {

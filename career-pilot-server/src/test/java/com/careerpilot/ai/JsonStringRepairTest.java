@@ -42,6 +42,25 @@ class JsonStringRepairTest {
     }
 
     @Test
+    @DisplayName("字符串内裸制表符/换行被转义且修复后可解析")
+    void repairsUnescapedControlCharacters() throws Exception {
+        String broken = "{\"content\": \"1. \t参与接口开发\n2. 测试\", \"n\": 1}";
+        boolean beforeRepairFailed = false;
+        try {
+            objectMapper.readValue(broken, Map.class);
+        }
+        catch (Exception ex) {
+            beforeRepairFailed = true;
+        }
+        assertTrue(beforeRepairFailed, "前置：含裸控制字符的文本应无法解析");
+
+        String repaired = JsonStringRepair.repairUnescapedQuotes(broken);
+        Map<?, ?> parsed = objectMapper.readValue(repaired, Map.class);
+        assertEquals("1. \t参与接口开发\n2. 测试", parsed.get("content"));
+        assertEquals(1, parsed.get("n"));
+    }
+
+    @Test
     @DisplayName("正常 JSON 逐字符不变")
     void keepsValidJsonUnchanged() {
         String valid = "{\"a\": \"x\", \"nested\": {\"b\": [1, 2]}, \"n\": null}";

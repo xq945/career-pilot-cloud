@@ -102,6 +102,18 @@ public class OptimizationStreamConsumer extends AbstractStreamConsumer<Optimizat
         stateService.fail(payload.optimizationId(), attemptId, message);
     }
 
+    /**
+     * 事实校验失败时一并保存完整问题清单（V1.13）；其他异常沿用基类文案。
+     */
+    @Override
+    protected void markFailed(OptimizationTask payload, String attemptId, String message,
+                              Throwable cause) {
+        String failureDetail = cause instanceof OptimizationFactCheckException factCheck
+                ? factCheck.failureDetailJson()
+                : null;
+        stateService.fail(payload.optimizationId(), attemptId, message, failureDetail);
+    }
+
     @Override
     protected int batchSize() {
         return AsyncTaskStreamConstants.BATCH_SIZE;

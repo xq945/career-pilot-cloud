@@ -384,6 +384,26 @@ function fillHistoryFromCompare() {
             show-icon
             :title="report.errorMessage || '任务执行失败，可重试'"
           />
+          <!-- V1.13：errorMessage 只含前 5 项汇总，这里展开全部校验问题（已脱敏） -->
+          <el-collapse v-if="report.failureIssues?.length" class="task-card__issues">
+            <el-collapse-item
+              :title="`校验问题明细（共 ${report.failureIssues.length} 项）`"
+              name="issues"
+            >
+              <ul class="task-card__issue-list">
+                <li v-for="(issue, index) in report.failureIssues" :key="index">
+                  <el-tag
+                    size="small"
+                    effect="plain"
+                    :type="issue.severity === 'RISK' ? 'warning' : 'danger'"
+                  >
+                    {{ issue.severity === 'RISK' ? '风险' : '阻断' }}
+                  </el-tag>
+                  <span>{{ issue.message }}</span>
+                </li>
+              </ul>
+            </el-collapse-item>
+          </el-collapse>
           <div class="task-card__foot">
             <el-button type="primary" :loading="retrying" @click="handleRetry">
               重试
@@ -843,6 +863,29 @@ function fillHistoryFromCompare() {
   display: flex;
   gap: 8px;
   margin-top: 16px;
+}
+
+/* V1.13：失败任务的校验问题明细 */
+.task-card__issues {
+  margin-top: 12px;
+}
+
+.task-card__issue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-card__issue-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-700, #333);
 }
 
 .page-head {

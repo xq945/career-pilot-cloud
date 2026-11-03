@@ -415,6 +415,26 @@ ul, ol { margin: 0; padding-left: 20px; }
   box-shadow: 0 0 0 3px rgba(59, 130, 246, .14);
 }
 
+/* 列表行内的求职进度下拉（M21）：与操作按钮同高、固定宽度，避免切换时行内元素跳动 */
+.item__status { flex: 0 0 auto; }
+
+.select--status {
+  width: 108px;
+  height: 30px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.select--status[data-status="PENDING"] { color: var(--ink-500); }
+.select--status[data-status="APPLIED"] { color: var(--info); }
+.select--status[data-status="WRITTEN"],
+.select--status[data-status="INTERVIEW_1"],
+.select--status[data-status="INTERVIEW_2"],
+.select--status[data-status="HR"] { color: var(--warn); }
+.select--status[data-status="OFFER"] { color: var(--ok); }
+.select--status[data-status="REJECTED"] { color: var(--danger); }
+
 .input::placeholder, .textarea::placeholder { color: var(--ink-400); }
 
 .field__hint { font-size: 12px; color: var(--ink-400); margin-top: 5px; }

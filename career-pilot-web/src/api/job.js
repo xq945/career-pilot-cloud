@@ -1,7 +1,7 @@
 import request from './request'
 
 /**
- * 岗位接口（《API接口设计》5.1–5.7）。
+ * 岗位接口（《API接口设计》5.1–5.8）。
  *
  * 所有接口的归属校验在后端完成（身份取自 Token），前端不传任何用户标识；
  * 他人岗位 ID 一律返回 404（不区分"不存在"与"无权访问"）。
@@ -25,6 +25,15 @@ export function createJob(payload) {
 /** 更新岗位（5.4）：**全量更新**——jobName/description 必填，companyName 省略或 null 表示清空 */
 export function updateJob(id, payload) {
   return request.put(`/jobs/${id}`, payload)
+}
+
+/**
+ * 求职进度切换（5.8，M21）：只改状态，不动描述与其他字段；返回最新详情。
+ *
+ * 与全量更新（5.4）分开：编辑岗位不会重置进度，列表行内切换也无需整份回传。
+ */
+export function updateJobStatus(id, status) {
+  return request.put(`/jobs/${id}/status`, { status })
 }
 
 /** 删除岗位（5.5）：逻辑删除，关联分析记录保留；重复删除幂等成功 */

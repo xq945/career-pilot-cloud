@@ -1,17 +1,18 @@
 package com.careerpilot.ai;
 
 /**
- * JSON 字符串中**未转义引号**的本地修复（纯函数，M14）。
+ * JSON 字符串中**未转义引号 / 裸控制字符**的本地修复（纯函数，M14）。
  *
  * <p>背景：模型输出合法 JSON 时偶尔会漏转义字符串内部的引号
- * （如 {@code {"analysis": "他说"很好"然后..."}}），导致反序列化失败。
- * 这类损坏是**机械可修复**的：在不破坏结构的前提下，把"疑似字符串内部"的裸引号补上反斜杠。
+ * （如 {@code {"analysis": "他说"很好"然后..."}}），或从简历里复制制表符/换行
+ * （{@code CTRL-CHAR code 9}），导致反序列化失败。这类损坏是**机械可修复**的：
+ * 在不破坏结构的前提下补转义。
  *
  * <p>修复策略（单遍状态机扫描）：跟踪"是否在字符串内 / 是否处于转义态"；
  * 字符串内的裸引号若其后（跳过空白）紧跟 {@code , } ] :} 或结束，视为字符串结束符，
- * 否则判定为未转义的内容引号并补 {@code \"}。
+ * 否则判定为未转义的内容引号并补 {@code \"}；字符串内的裸控制字符按 JSON 规则转义。
  *
- * <p>本类**只做引号修复**、不做其他猜测；修复后仍解析失败时，由 {@link AiCallTemplate}
+ * <p>本类**只做机械转义修复**、不做其他猜测；修复后仍解析失败时，由 {@link AiCallTemplate}
  * 走修复型重试（《系统架构设计》§11 V8 的结论：本地修复优先，避免为可机械修复的损坏
  * 多花一次模型调用）。
  */
@@ -51,6 +52,10 @@ public final class JsonStringRepair {
                 escaping = true;
                 continue;
             }
+            if (ch < 0x20) {
+                repaired.append(controlEscape(ch));
+                continue;
+            }
             if (ch == '"') {
                 if (isLikelyJsonStringTerminator(content, i + 1)) {
                     inString = false;
@@ -63,6 +68,18 @@ public final class JsonStringRepair {
             repaired.append(ch);
         }
         return repaired.toString();
+    }
+
+    /** 字符串内的裸控制字符转成 JSON 合法转义。 */
+    private static String controlEscape(char ch) {
+        return switch (ch) {
+            case '\t' -> "\\t";
+            case '\n' -> "\\n";
+            case '\r' -> "\\r";
+            case '\b' -> "\\b";
+            case '\f' -> "\\f";
+            default -> String.format("\\u%04x", (int) ch);
+        };
     }
 
     /** 引号之后（跳过空白）若紧跟 , } ] : 或已到末尾，视为字符串的结束引号 */
