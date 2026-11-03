@@ -20,6 +20,7 @@
 
     <modules>
         <module>career-common</module>
+        <module>career-token</module>
         <module>career-storage</module>
         <module>career-security</module>
         <module>career-ai-core</module>
@@ -30,6 +31,7 @@
         <module>career-domain-interview</module>
         <module>career-domain-agent</module>
         <module>career-app</module>
+        <module>career-gateway</module>
     </modules>
 
     <!--
@@ -49,6 +51,8 @@
         <redisson.version>4.0.0</redisson.version>
         <hutool.version>5.8.48</hutool.version>
         <aliyun-sdk-oss.version>3.18.5</aliyun-sdk-oss.version>
+        <spring-cloud.version>2025.1.4</spring-cloud.version>
+        <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
     </properties>
 
     <dependencyManagement>
@@ -60,11 +64,30 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
 
             <!-- 内部模块 -->
             <dependency>
                 <groupId>com.careerpilot</groupId>
                 <artifactId>career-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.careerpilot</groupId>
+                <artifactId>career-token</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

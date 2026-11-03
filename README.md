@@ -25,11 +25,13 @@
 career-pilot-ai/
 ├─ career-pilot-server/   后端（Spring Boot 4.0.9 + Java 21，Maven 多模块）
 │  ├─ career-common/      共享内核（统一响应、异常、分页、Redis Stream 模板）
+│  ├─ career-token/       用户 JWT 与网关内部令牌（无 Servlet 依赖）
 │  ├─ career-storage/     文件存储抽象（本地 / OSS）
-│  ├─ career-security/    JWT 签发/解析与当前用户上下文
+│  ├─ career-security/    JWT 过滤器与当前用户上下文
 │  ├─ career-ai-core/     多模型 Provider 与统一模型调用
 │  ├─ career-domain-*/    业务域（auth / resume / job / match / interview / agent）
-│  └─ career-app/         应用装配（Controller、配置、启动类）
+│  ├─ career-app/         应用装配（Controller、配置、启动类，8081）
+│  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
 ├─ prototype/             前端高保真原型（HTML，双击 index.html 即可查看）
 ├─ tools/                 开发辅助工具：brand/ 品牌资源生成与校验、e2e/ 浏览器端到端验证、
@@ -82,6 +84,7 @@ node tools/seed/demo-data.mjs --matches 2 --optimizations 1 --interviews 1   # �
 | Node.js | 20+ | 24.21.0 |
 | MySQL | 8.0+ | 8.0.46 |
 | Redis | 6+（**M16 起**，仅「创建优化」异步链路需要；`app.optimization.async.enabled=false` 时可不装） | 本地服务 `6379` |
+| Nacos | 3.x（**阶段 3 起**，服务注册发现；无 Nacos 时可用 `NACOS_ENABLED=false` 直连单体） | 3.0.3，`8848` |
 
 ### 1. 初始化数据库
 
@@ -96,7 +99,7 @@ mysql -u root -p < Mysql/career_pilot_init.sql
 复制配置模板并填入真实值：
 
 ```bash
-cd career-pilot-server/src/main/resources
+cd career-pilot-server/career-app/src/main/resources
 cp application-local.yml.example application-local.yml
 ```
 
@@ -117,13 +120,22 @@ cp application-local.yml.example application-local.yml
 
 ### 3. 启动后端
 
+先确认 Nacos 已启动（默认 `127.0.0.1:8848`）。
+
 ```bash
 cd career-pilot-server
 mvn clean package
+
+# 1) 业务服务：8081，注册到 Nacos 的 CAREER_PILOT 分组
 java -jar career-app/target/career-pilot-server.jar
+
+# 2) 网关：8080，统一入口（另开终端）
+#    APP_JWT_SECRET 必须与 application-local.yml 的 app.jwt.secret 相同
+GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  java -jar career-gateway/target/career-gateway.jar
 ```
 
-服务地址 `http://localhost:8080`。
+服务地址 `http://localhost:8080`（经网关）；单体直连为 `http://localhost:8081`。本机 8080 被其他程序占用时，把 `GATEWAY_PORT` 改为 18080 等空闲端口，并把前端 `VITE_API_BASE_URL` 指向同一端口。
 
 > **务必用 JDK 21 运行。** 若本机 `JAVA_HOME` 指向其他版本，注意 `java -jar` 走的是 PATH 解析而非 `JAVA_HOME`，此时应使用完整路径：`/path/to/jdk21/bin/java -jar career-app/target/career-pilot-server.jar`。否则会报 `UnsupportedClassVersionError`。
 
@@ -166,7 +178,9 @@ npm run dev
 
 | 项 | 默认值 | 配置项 |
 |---|---|---|
-| 后端端口 | 8080 | `server.port` |
+| 后端端口 | 8081 | `server.port` / `SERVER_PORT` |
+| 网关端口 | 8080 | `server.port` / `GATEWAY_PORT` |
+| Nacos 地址 | 127.0.0.1:8848 | `spring.cloud.nacos.discovery.server-addr` / `NACOS_ADDR` |
 | 前端开发端口 | 5173 | `career-pilot-web/vite.config.js` |
 | 前端请求的 API 地址 | `http://localhost:8080/api` | `career-pilot-web/.env.development` 的 `VITE_API_BASE_URL`（本地覆盖用 `.env.local`） |
 | 允许的跨域来源 | `http://localhost:5173` | `app.cors.allowed-origins` |

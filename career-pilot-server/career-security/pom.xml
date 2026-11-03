@@ -19,6 +19,10 @@
             <artifactId>career-common</artifactId>
         </dependency>
         <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-token</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-core</artifactId>
         </dependency>

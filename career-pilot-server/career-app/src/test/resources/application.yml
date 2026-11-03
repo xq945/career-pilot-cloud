@@ -1,5 +1,10 @@
 # 测试专用配置：用内存库满足 DataSource 自动装配，避免测试依赖本机 MySQL
 spring:
+  cloud:
+    nacos:
+      discovery:
+        # 单元测试不连接 Nacos（阶段 3 起单体默认注册到 Nacos）
+        enabled: false
   datasource:
     url: jdbc:h2:mem:careerpilot;DB_CLOSE_DELAY=-1;MODE=MySQL
     driver-class-name: org.h2.Driver
