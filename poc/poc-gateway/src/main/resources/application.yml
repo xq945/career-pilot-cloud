@@ -1,0 +1,27 @@
+server:
+  port: 18080
+
+spring:
+  application:
+    name: poc-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        group: CAREER_POC
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: poc-provider
+              uri: lb://poc-provider
+              predicates:
+                - Path=/poc/**
+              filters:
+                - StripPrefix=1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,gateway

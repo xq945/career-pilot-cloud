@@ -293,6 +293,7 @@ CREATE TABLE resume_optimization (
   error_message VARCHAR(500) DEFAULT NULL COMMENT '失败原因（M16 起为用户可读文案，随详情返回）',
   failure_detail LONGTEXT DEFAULT NULL COMMENT '事实校验失败的全部问题（JSON 数组，脱敏；V1.13 新增，成功时清空）',
   attempt_id VARCHAR(36) DEFAULT NULL COMMENT '执行代次围栏（M16）',
+  recovery_count INT NOT NULL DEFAULT 0 COMMENT 'PROCESSING 超时自动恢复次数（阶段 1 · B3）',
   stage VARCHAR(20) DEFAULT NULL COMMENT '当前阶段：MATCHING/GENERATING（M16，PROCESSING 时有值）',
   started_at DATETIME DEFAULT NULL COMMENT '开始执行时间（M16）',
   finished_at DATETIME DEFAULT NULL COMMENT '终态时间（M16）',
@@ -330,6 +331,11 @@ CREATE TABLE resume_optimization (
 -- 事实校验失败的完整问题清单（error_message 只有 500 字符，仅放汇总）。
 -- ALTER TABLE resume_optimization
 --   ADD COLUMN failure_detail LONGTEXT DEFAULT NULL COMMENT '事实校验失败的全部问题（JSON 数组，脱敏；V1.13 新增，成功时清空）';
+
+-- V1.14 增量（2026-11-03，阶段 1 · B3，既有库升级执行；新建库执行上面的完整 DDL 即可）：
+-- PROCESSING 超时自动恢复次数（达到上限后置 FAILED，避免毒任务无限重跑）。
+-- ALTER TABLE resume_optimization
+--   ADD COLUMN recovery_count INT NOT NULL DEFAULT 0 COMMENT 'PROCESSING 超时自动恢复次数（阶段 1 · B3）';
 
 -- ============================================================
 -- 12. 模型服务配置（V1.8 新增，M14）

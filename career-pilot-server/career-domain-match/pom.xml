@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.careerpilot</groupId>
+        <artifactId>career-pilot-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>career-domain-match</artifactId>
+    <description>匹配与优化域：评分内核、match_record、简历定向优化与 Redis Stream worker</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-ai-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-resume</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-job</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+        </dependency>
+    </dependencies>
+</project>

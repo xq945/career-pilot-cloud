@@ -11,7 +11,7 @@
 | 前端 | Vue 3 + Vite + Vue Router + Pinia | 官方稳定版 |
 | UI | Element Plus | 官方稳定版 |
 | HTTP | Axios | 官方稳定版 |
-| 后端 | Java + Spring Boot | Java 21 + Spring Boot 4.1.1 |
+| 后端 | Java + Spring Boot | Java 21 + Spring Boot 4.0.9 |
 | AI 集成 | Spring AI | 2.0.1 |
 | 模型 | DeepSeek API | `deepseek-flash` |
 | 数据库 | MySQL | 8.0+（推荐 8.4 LTS） |
@@ -23,7 +23,13 @@
 
 ```text
 career-pilot-ai/
-├─ career-pilot-server/   后端（Spring Boot 4.1.1 + Java 21）
+├─ career-pilot-server/   后端（Spring Boot 4.0.9 + Java 21，Maven 多模块）
+│  ├─ career-common/      共享内核（统一响应、异常、分页、Redis Stream 模板）
+│  ├─ career-storage/     文件存储抽象（本地 / OSS）
+│  ├─ career-security/    JWT 签发/解析与当前用户上下文
+│  ├─ career-ai-core/     多模型 Provider 与统一模型调用
+│  ├─ career-domain-*/    业务域（auth / resume / job / match / interview / agent）
+│  └─ career-app/         应用装配（Controller、配置、启动类）
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
 ├─ prototype/             前端高保真原型（HTML，双击 index.html 即可查看）
 ├─ tools/                 开发辅助工具：brand/ 品牌资源生成与校验、e2e/ 浏览器端到端验证、
@@ -114,12 +120,12 @@ cp application-local.yml.example application-local.yml
 ```bash
 cd career-pilot-server
 mvn clean package
-java -jar target/career-pilot-server-0.0.1-SNAPSHOT.jar
+java -jar career-app/target/career-pilot-server.jar
 ```
 
 服务地址 `http://localhost:8080`。
 
-> **务必用 JDK 21 运行。** 若本机 `JAVA_HOME` 指向其他版本，注意 `java -jar` 走的是 PATH 解析而非 `JAVA_HOME`，此时应使用完整路径：`/path/to/jdk21/bin/java -jar target/career-pilot-server-0.0.1-SNAPSHOT.jar`。否则会报 `UnsupportedClassVersionError`。
+> **务必用 JDK 21 运行。** 若本机 `JAVA_HOME` 指向其他版本，注意 `java -jar` 走的是 PATH 解析而非 `JAVA_HOME`，此时应使用完整路径：`/path/to/jdk21/bin/java -jar career-app/target/career-pilot-server.jar`。否则会报 `UnsupportedClassVersionError`。
 
 验证是否正常：
 

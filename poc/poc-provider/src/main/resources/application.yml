@@ -1,0 +1,17 @@
+server:
+  port: 18081
+
+spring:
+  application:
+    name: poc-provider
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        group: CAREER_POC
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

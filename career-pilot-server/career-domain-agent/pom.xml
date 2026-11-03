@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.careerpilot</groupId>
+        <artifactId>career-pilot-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>career-domain-agent</artifactId>
+    <description>智能体域：会话、工具编排与工具实现</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-ai-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-resume</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-job</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-match</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-domain-interview</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+    </dependencies>
+</project>

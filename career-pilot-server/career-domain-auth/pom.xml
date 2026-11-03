@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.careerpilot</groupId>
+        <artifactId>career-pilot-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>career-domain-auth</artifactId>
+    <description>身份与用户资料域：sys_user、登录、验证码、头像</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-storage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-captcha</artifactId>
+        </dependency>
+    </dependencies>
+</project>

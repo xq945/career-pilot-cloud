@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.careerpilot</groupId>
+        <artifactId>career-pilot-parent</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </parent>
+    <artifactId>career-domain-resume</artifactId>
+    <description>简历域：简历 CRUD、文件文本提取、简历分析</description>
+    <dependencies>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-storage</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
+            <artifactId>career-ai-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot4-starter</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parsers-standard-package</artifactId>
+        </dependency>
+    </dependencies>
+</project>
