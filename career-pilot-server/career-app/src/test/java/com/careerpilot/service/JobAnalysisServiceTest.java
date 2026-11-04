@@ -59,7 +59,7 @@ class JobAnalysisServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new JobAnalysisService(jobService, jobAiService, jobAnalysisMapper);
+        service = new LocalJobAnalysisService(jobService, jobAiService, jobAnalysisMapper);
     }
 
     // ---------------------------------------------------------------- 前置校验

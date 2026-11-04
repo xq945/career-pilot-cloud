@@ -51,7 +51,7 @@ class JobServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new JobService(jobMapper, jobAnalysisMapper);
+        service = new LocalJobService(jobMapper, jobAnalysisMapper);
     }
 
     // ---------------------------------------------------------------- 列表：三态判定

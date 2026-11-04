@@ -69,7 +69,7 @@ class ResumeServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResumeService(resumeMapper, resumeAnalysisMapper,
+        service = new LocalResumeService(resumeMapper, resumeAnalysisMapper,
                 fileStorageService, textExtractionService);
     }
 

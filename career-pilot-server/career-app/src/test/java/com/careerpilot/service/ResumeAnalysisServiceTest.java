@@ -59,7 +59,7 @@ class ResumeAnalysisServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResumeAnalysisService(resumeService, resumeAiService, resumeAnalysisMapper);
+        service = new LocalResumeAnalysisService(resumeService, resumeAiService, resumeAnalysisMapper);
     }
 
     // ---------------------------------------------------------------- 前置校验
