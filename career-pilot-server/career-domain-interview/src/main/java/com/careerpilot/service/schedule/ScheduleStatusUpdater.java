@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +24,8 @@ import com.careerpilot.mapper.InterviewScheduleMapper;
  * 直接写星号斜杠的 cron 简写——会提前终止块注释）。
  */
 @Component
+@ConditionalOnProperty(prefix = "app.interview", name = "mode", havingValue = "local",
+        matchIfMissing = true)
 public class ScheduleStatusUpdater {
 
     private static final Logger log = LoggerFactory.getLogger(ScheduleStatusUpdater.class);

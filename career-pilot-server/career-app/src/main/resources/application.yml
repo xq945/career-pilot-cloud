@@ -179,6 +179,14 @@ app:
       scan-interval: 60s
       # PROCESSING 超时被自动恢复的最大次数；超过后置 FAILED，避免毒任务无限重跑
       max-recovery-count: 3
+  interview:
+    # 阶段 8：面试/日程域由 career-interview 服务提供；单体通过 Feign 远程实现访问
+    mode: ${APP_INTERVIEW_MODE:remote}
+    summary:
+      # 单体不生成总评：面试服务的同步/异步开关由它自己的配置决定。
+      # 回滚到单体面试（app.interview.mode=local）时**必须保持 false**：单体没有 outbox 表
+      # 与 RabbitMQ 消费者，开启异步只会把任务写进不存在的表。
+      async-enabled: ${APP_INTERVIEW_SUMMARY_ASYNC_ENABLED:false}
   match:
     # 阶段 7：匹配/优化域由 career-match 服务提供；单体通过 Feign 远程实现访问
     mode: ${APP_MATCH_MODE:remote}

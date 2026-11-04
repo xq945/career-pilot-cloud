@@ -46,10 +46,15 @@ public class InterviewTxService {
 
     private final InterviewQuestionMapper questionMapper;
 
+    /** 阶段 8：会话完成事件的本地消息表写入（异步总评；与本题写入同事务） */
+    private final InterviewCompletionOutbox completionOutbox;
+
     public InterviewTxService(InterviewSessionMapper sessionMapper,
-                              InterviewQuestionMapper questionMapper) {
+                              InterviewQuestionMapper questionMapper,
+                              InterviewCompletionOutbox completionOutbox) {
         this.sessionMapper = sessionMapper;
         this.questionMapper = questionMapper;
+        this.completionOutbox = completionOutbox;
     }
 
     // ---------------------------------------------------------------- 创建会话
@@ -88,6 +93,9 @@ public class InterviewTxService {
     /**
      * 写入回答与评价，并在会话完成时计算总分（**同一事务**）。
      *
+     * <p>阶段 8：{@code enqueueCompletionEvent=true} 且本次使会话完成时，额外写入
+     * {@code outbox_event}（同事务）——事务提交后总评由消费者生成，提交回答立即返回。
+     *
      * <p>并发与一致性（本方法的关键设计）：
      * <ol>
      *   <li>先对**会话行**加锁（{@code FOR UPDATE}）序列化同一会话的并发提交；</li>
@@ -103,7 +111,8 @@ public class InterviewTxService {
      */
     @Transactional
     public AnswerOutcome applyAnswerAndRecompute(Long userId, Long sessionId, Long questionId,
-                                                 String answer, InterviewEvaluationAiOutput evaluation) {
+                                                 String answer, InterviewEvaluationAiOutput evaluation,
+                                                 boolean enqueueCompletionEvent) {
         // ① 会话行锁 + 当前读（同时复核归属，理论上前置校验已通过，此处为锁内防御）
         InterviewSession session = sessionMapper.selectOne(Wrappers.<InterviewSession>lambdaQuery()
                 .eq(InterviewSession::getId, sessionId)
@@ -162,7 +171,12 @@ public class InterviewTxService {
                 update.setCompletedAt(now);
             }
             sessionMapper.updateById(update);
-            log.info("面试会话已完成：sessionId={} 题数={} 总分={}", sessionId, questions.size(), totalScore);
+            if (enqueueCompletionEvent) {
+                // 与会话完成同事务：要么"已完成 + 事件已记录"，要么都不生效
+                completionOutbox.enqueue(session, totalScore);
+            }
+            log.info("面试会话已完成：sessionId={} 题数={} 总分={} 异步总评={}",
+                    sessionId, questions.size(), totalScore, enqueueCompletionEvent);
         }
         return new AnswerOutcome(completed, totalScore, questions);
     }

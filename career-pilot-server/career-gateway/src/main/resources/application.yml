@@ -39,6 +39,10 @@ spring:
               uri: lb://career-match
               predicates:
                 - Path=/api/matches,/api/matches/**,/api/optimizations,/api/optimizations/**
+            - id: career-interview
+              uri: lb://career-interview
+              predicates:
+                - Path=/api/interviews,/api/interviews/**,/api/interview-schedules,/api/interview-schedules/**
             - id: career-api
               uri: lb://career-pilot-server
               predicates:

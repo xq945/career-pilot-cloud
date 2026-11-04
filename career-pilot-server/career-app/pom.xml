@@ -61,6 +61,10 @@
         </dependency>
         <dependency>
             <groupId>com.careerpilot</groupId>
+            <artifactId>career-interview-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
             <artifactId>career-domain-agent</artifactId>
         </dependency>
 

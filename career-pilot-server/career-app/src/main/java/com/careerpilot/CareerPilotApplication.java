@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.careerpilot.config.AgentProperties;
 import com.careerpilot.config.AiCallProperties;
+import com.careerpilot.config.InterviewSummaryProperties;
 import com.careerpilot.config.LlmProperties;
 import com.careerpilot.config.MatchScoringProperties;
 import com.careerpilot.config.OptimizationAsyncProperties;
@@ -28,7 +29,8 @@ import com.careerpilot.config.OptimizationAsyncProperties;
 @EnableScheduling
 @EnableFeignClients(basePackages = "com.careerpilot")
 @EnableConfigurationProperties({MatchScoringProperties.class, AgentProperties.class,
-        LlmProperties.class, AiCallProperties.class, OptimizationAsyncProperties.class})
+        LlmProperties.class, AiCallProperties.class, OptimizationAsyncProperties.class,
+        InterviewSummaryProperties.class})
 public class CareerPilotApplication {
 
     public static void main(String[] args) {

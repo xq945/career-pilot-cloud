@@ -25,7 +25,6 @@ import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
-import com.careerpilot.mapper.InterviewSessionMapper;
 
 /**
  * 仪表盘汇总服务（《API接口设计》9.1）。
@@ -82,19 +81,20 @@ public class DashboardService {
 
     private final ResumeOptimizationService resumeOptimizationService;
 
-    private final InterviewSessionMapper interviewSessionMapper;
+    /** 阶段 8：面试域已拆出，计数与最近会话经服务接口读取（remote/local 由配置决定） */
+    private final InterviewService interviewService;
 
     public DashboardService(ResumeService resumeService, ResumeAnalysisService resumeAnalysisService,
                             JobService jobService, JobAnalysisService jobAnalysisService,
                             MatchService matchService, ResumeOptimizationService resumeOptimizationService,
-                            InterviewSessionMapper interviewSessionMapper) {
+                            InterviewService interviewService) {
         this.resumeService = resumeService;
         this.resumeAnalysisService = resumeAnalysisService;
         this.jobService = jobService;
         this.jobAnalysisService = jobAnalysisService;
         this.matchService = matchService;
         this.resumeOptimizationService = resumeOptimizationService;
-        this.interviewSessionMapper = interviewSessionMapper;
+        this.interviewService = interviewService;
     }
 
     /** 汇总（9.1）：12 个字段一次装配返回 */
@@ -108,16 +108,11 @@ public class DashboardService {
         summary.setJobStaleCount(jobCounts.stale());
         summary.setMatchCount((int) matchService.countOwnedMatches(userId));
         summary.setBestMatchScore(matchService.bestMatchScore(userId));
-        summary.setInterviewCount(countOf(interviewSessionMapper.selectCount(Wrappers.<InterviewSession>lambdaQuery()
-                .eq(InterviewSession::getUserId, userId))));
-        summary.setInterviewOngoingCount(countOf(interviewSessionMapper.selectCount(
-                Wrappers.<InterviewSession>lambdaQuery()
-                        .eq(InterviewSession::getUserId, userId)
-                        .eq(InterviewSession::getStatus, InterviewSession.STATUS_ONGOING))));
-        summary.setInterviewCompletedCount(countOf(interviewSessionMapper.selectCount(
-                Wrappers.<InterviewSession>lambdaQuery()
-                        .eq(InterviewSession::getUserId, userId)
-                        .eq(InterviewSession::getStatus, InterviewSession.STATUS_COMPLETED))));
+        summary.setInterviewCount((int) interviewService.countOwnedSessions(userId));
+        summary.setInterviewOngoingCount((int) interviewService.countOwnedSessionsByStatus(
+                userId, InterviewSession.STATUS_ONGOING));
+        summary.setInterviewCompletedCount((int) interviewService.countOwnedSessionsByStatus(
+                userId, InterviewSession.STATUS_COMPLETED));
         summary.setRecentTasks(recentTasks(userId));
         summary.setRecentMatches(recentMatches(userId));
         summary.setTopGaps(topGaps(userId));
@@ -273,14 +268,7 @@ public class DashboardService {
 
     /** 面试任务：标题即会话标题（会话无删除语义，全量参与） */
     private void appendInterviewTasks(List<DashboardRecentTask> tasks, Long userId) {
-        List<InterviewSession> sessions = interviewSessionMapper.selectList(
-                Wrappers.<InterviewSession>lambdaQuery()
-                        .select(InterviewSession::getId, InterviewSession::getTitle,
-                                InterviewSession::getCreatedAt)
-                        .eq(InterviewSession::getUserId, userId)
-                        .orderByDesc(InterviewSession::getCreatedAt)
-                        .orderByDesc(InterviewSession::getId)
-                        .last("LIMIT " + RECENT_TASK_PER_KIND));
+        List<InterviewSession> sessions = interviewService.recentSessions(userId, RECENT_TASK_PER_KIND);
         for (InterviewSession session : sessions) {
             tasks.add(task(TASK_TYPE_INTERVIEW, session.getTitle(), session.getId(),
                     session.getCreatedAt()));
@@ -330,10 +318,6 @@ public class DashboardService {
         List<Long> ids = records.stream().map(MatchRecord::getJobId).distinct().toList();
         return jobService.listJobsByIds(ids)
                 .stream().collect(Collectors.toMap(Job::getId, Function.identity()));
-    }
-
-    private static int countOf(Long count) {
-        return count == null ? 0 : count.intValue();
     }
 
     /** 岗位 analyzed / stale 两个计数的载体（一次查询算出，避免重复扫表） */

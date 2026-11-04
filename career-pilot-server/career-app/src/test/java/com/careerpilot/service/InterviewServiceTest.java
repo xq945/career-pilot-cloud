@@ -29,6 +29,8 @@ import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.PageQuery;
 import com.careerpilot.common.PageResult;
+import com.careerpilot.config.InterviewSummaryProperties;
+import com.careerpilot.dto.InterviewContextSnapshot;
 import com.careerpilot.dto.AnswerEvaluationResponse;
 import com.careerpilot.dto.CategoryScore;
 import com.careerpilot.dto.InterviewCreateRequest;
@@ -88,9 +90,12 @@ class InterviewServiceTest {
         resumeService = mock(ResumeService.class);
         resumeOptimizationService = mock(ResumeOptimizationService.class);
         matchService = mock(MatchService.class);
-        service = new InterviewService(sessionMapper, questionMapper,
+        // 阶段 8：总评生成下沉到 InterviewSummaryService（同步路径仍在本测试覆盖范围内）
+        InterviewSummaryService summaryService = new InterviewSummaryService(
+                sessionMapper, questionMapper, jobService, aiService, txService, summaryFallback);
+        service = new LocalInterviewService(sessionMapper, questionMapper,
                 jobService, mock(JobAnalysisService.class),
-                aiService, txService, summaryFallback,
+                aiService, txService, summaryService, new InterviewSummaryProperties(false),
                 resumeService, resumeOptimizationService, matchService);
         // M15：历史题去重查询的宽松桩（不走创建路径的用例不受影响）
         lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
@@ -160,6 +165,14 @@ class InterviewServiceTest {
         verify(txService).saveNewSession(sessionCaptor.capture(), anyList());
         assertEquals(101L, sessionCaptor.getValue().getResumeId());
         assertEquals(301L, sessionCaptor.getValue().getOptimizationId());
+
+        // 阶段 8：出题上下文快照随会话落库（优化路径写优化稿，简历正文留空）
+        InterviewContextSnapshot snapshot = sessionCaptor.getValue().getContextSnapshot();
+        assertNotNull(snapshot);
+        assertEquals("熟悉 Java 与 Spring Boot", snapshot.getJobDescription());
+        assertEquals("优化后的简历内容", snapshot.getOptimizationContent());
+        assertNull(snapshot.getResumeContent());
+        assertNotNull(snapshot.getMatchGaps());
 
         // 出题上下文：简历块取优化稿当前稿（editedContent 优先），差距块取该优化的匹配记录
         ArgumentCaptor<String> resumeText = ArgumentCaptor.forClass(String.class);
@@ -310,13 +323,13 @@ class InterviewServiceTest {
         stubOwnedSessionAndQuestion();
         when(aiService.evaluate(any(), any(), any()))
                 .thenReturn(new AiCallResult<>(evaluation(), "test-model", 100L, 1, 1, 2));
-        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any()))
+        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any(), eq(false)))
                 .thenReturn(new InterviewTxService.AnswerOutcome(false, null, List.of()));
 
         AnswerEvaluationResponse response = service.submitAnswer(1L, 10L, 100L, "我的回答");
 
         assertEquals(new BigDecimal("78.00"), response.getScore());
-        verify(aiService, never()).summarize(any(), any(), anyList(), any());
+        verify(aiService, never()).summarize(any(), any(), anyList(), any(), any());
     }
 
     @Test
@@ -327,11 +340,11 @@ class InterviewServiceTest {
         List<InterviewQuestion> answered = List.of(
                 question(1L, "题目一", new BigDecimal("80.00"), "回答一"),
                 question(2L, "题目二", new BigDecimal("90.00"), "回答二"));
-        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any()))
+        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any(), eq(false)))
                 .thenReturn(new InterviewTxService.AnswerOutcome(true, new BigDecimal("85.00"), answered));
         InterviewSummaryAiOutput summary = new InterviewSummaryAiOutput();
         summary.setSummary("整体表现良好");
-        when(aiService.summarize(any(), eq("MIXED"), eq(answered), eq(new BigDecimal("85.00"))))
+        when(aiService.summarize(any(), eq("MIXED"), eq(answered), eq(new BigDecimal("85.00")), isNull()))
                 .thenReturn(new AiCallResult<>(summary, "test-model", 100L, 1, 1, 2));
 
         service.submitAnswer(1L, 10L, 100L, "我的回答");
@@ -345,9 +358,9 @@ class InterviewServiceTest {
         stubOwnedSessionAndQuestion();
         when(aiService.evaluate(any(), any(), any()))
                 .thenReturn(new AiCallResult<>(evaluation(), "test-model", 100L, 1, 1, 2));
-        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any()))
+        when(txService.applyAnswerAndRecompute(eq(1L), eq(10L), eq(100L), any(), any(), eq(false)))
                 .thenReturn(new InterviewTxService.AnswerOutcome(true, new BigDecimal("85.00"), List.of()));
-        when(aiService.summarize(any(), any(), anyList(), any()))
+        when(aiService.summarize(any(), any(), anyList(), any(), any()))
                 .thenThrow(BusinessException.aiUnavailable("大模型服务暂时不可用"));
         // M15：失败时写入确定性降级总评（DEGRADED）——"降级"可见，不再静默缺失
         InterviewSummaryAiOutput degraded = new InterviewSummaryAiOutput();

@@ -33,7 +33,6 @@ import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
-import com.careerpilot.mapper.InterviewSessionMapper;
 
 /**
  * 仪表盘汇总的护栏（《API接口设计》9.1）。
@@ -69,7 +68,7 @@ class DashboardServiceTest {
     private ResumeOptimizationService resumeOptimizationService;
 
     @Mock
-    private InterviewSessionMapper interviewSessionMapper;
+    private InterviewService interviewService;
 
     @InjectMocks
     private DashboardService dashboardService;
@@ -232,8 +231,12 @@ class DashboardServiceTest {
 
     @Test
     void summary_interviewCounts_totalOngoingCompleted() {
-        // 三次 selectCount 依次为：总数（含 1 条已取消）、进行中、已完成
-        when(interviewSessionMapper.selectCount(any())).thenReturn(3L, 1L, 1L);
+        // 总数（含 1 条已取消）、进行中、已完成分三次读取
+        when(interviewService.countOwnedSessions(USER_ID)).thenReturn(3L);
+        when(interviewService.countOwnedSessionsByStatus(USER_ID, InterviewSession.STATUS_ONGOING))
+                .thenReturn(1L);
+        when(interviewService.countOwnedSessionsByStatus(USER_ID, InterviewSession.STATUS_COMPLETED))
+                .thenReturn(1L);
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         // status = 2（已取消）计入总数、不计入两个细分（第一版无取消入口，仅口径防御）
@@ -260,7 +263,7 @@ class DashboardServiceTest {
         when(resumeOptimizationService.recentSuccessOptimizations(eq(USER_ID), anyInt())).thenReturn(List.of(
                 optimization(301L, 11L, 21L, "2026-10-14T10:00:02"),
                 optimization(302L, 12L, 21L, "2026-10-14T10:00:01")));
-        when(interviewSessionMapper.selectList(any())).thenReturn(List.of(
+        when(interviewService.recentSessions(USER_ID, 3)).thenReturn(List.of(
                 interviewSession(801L, "面试一", "2026-10-14T10:00:07"),
                 interviewSession(802L, "面试二", "2026-10-14T10:00:06")));
         List<DashboardRecentTask> tasks = dashboardService.summary(USER_ID).getRecentTasks();

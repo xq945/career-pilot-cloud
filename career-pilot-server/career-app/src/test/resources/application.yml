@@ -69,6 +69,12 @@ app:
       processing-timeout: 10m
       scan-interval: 60s
       max-recovery-count: 3
+  interview:
+    # 测试走本地面试实现（不发起远程 Feign 调用）
+    mode: local
+    summary:
+      # 测试走同步路径（不依赖 RabbitMQ / outbox）；异步分支由服务模块单测覆盖
+      async-enabled: false
   match:
     # 测试走本地 Match/Optimization 实现（不发起远程 Feign 调用）
     mode: local

@@ -37,6 +37,8 @@ career-pilot-ai/
 │  ├─ career-resume-service/ 简历服务（8082，简历 CRUD/上传/文本提取/分析）
 │  ├─ career-match-client/   匹配/优化服务远程客户端（Feign）
 │  ├─ career-match-service/  匹配与优化服务（8084，匹配/优化/Redis Stream worker）
+│  ├─ career-interview-client/  面试服务远程客户端（Feign）
+│  ├─ career-interview-service/ 面试服务（8085，面试/日程/总评异步化）
 │  ├─ career-app/         剩余业务单体（8091）
 │  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
@@ -132,6 +134,14 @@ mysql -u root -p < Mysql/migration-stage7-match.sql
 
 该脚本创建 `cp_match`、复制 `match_record` / `resume_optimization`，新增输入快照与冗余版本号列，并删除面试表对优化记录的跨库外键。
 
+阶段 8 起，面试与日程数据拆到 `cp_interview`（首次部署再执行一次）：
+
+```bash
+mysql -u root -p < Mysql/migration-stage8-interview.sql
+```
+
+该脚本创建 `cp_interview`、复制 `interview_session` / `interview_question` / `interview_schedule`，新增 `context_snapshot` 与事件投递表（`outbox_event`、`mq_consumed_message`）。
+
 ### 2. 配置后端
 
 复制配置模板并填入真实值：
@@ -158,7 +168,7 @@ cp application-local.yml.example application-local.yml
 
 ### 3. 启动后端
 
-先确认 Nacos（`127.0.0.1:8848`）与 Redis（`127.0.0.1:6379`）已启动。
+先确认 Nacos（`127.0.0.1:8848`）、Redis（`127.0.0.1:6379`）与 RabbitMQ（`127.0.0.1:5672`）已启动。
 
 ```bash
 cd career-pilot-server
@@ -184,15 +194,21 @@ DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' 
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-match-service/target/career-match.jar
 
-# 5) 认证服务：8081（验证码/JWT/资料/头像）
+# 5) 面试服务：8085（模拟面试/日程/总评异步化）
+#    需要 RabbitMQ；异步总评默认开启（APP_INTERVIEW_SUMMARY_ASYNC_ENABLED=false 回到同步）
+DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672 RABBITMQ_USERNAME=guest RABBITMQ_PASSWORD=guest \
+  java -jar career-interview-service/target/career-interview.jar
+
+# 6) 认证服务：8081（验证码/JWT/资料/头像）
 #    DB_PASSWORD 为 MySQL 密码；APP_JWT_SECRET 与 application-local.yml 的 app.jwt.secret 相同
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-auth-service/target/career-auth.jar
 
-# 6) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
+# 7) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
 java -jar career-app/target/career-pilot-server.jar
 
-# 7) 网关：8080（另开终端）
+# 8) 网关：8080（另开终端）
 GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-gateway/target/career-gateway.jar
 ```
@@ -247,6 +263,9 @@ npm run dev
 | 简历服务端口 | 8082 | `server.port` / `RESUME_PORT` |
 | 匹配服务端口 | 8084 | `server.port` / `MATCH_PORT` |
 | 优化 Worker 角色 | `all` | `app.optimization.role` / `APP_OPTIMIZATION_ROLE`（`api` 不消费任务） |
+| 面试服务端口 | 8085 | `server.port` / `INTERVIEW_PORT` |
+| 总评异步开关 | `true` | `app.interview.summary.async-enabled` / `APP_INTERVIEW_SUMMARY_ASYNC_ENABLED`（`false` 回到提交时同步生成） |
+| RabbitMQ 地址 | 127.0.0.1:5672 | `spring.rabbitmq.*` / `RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USERNAME`、`RABBITMQ_PASSWORD` |
 | auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |
 | 剩余单体端口 | 8091 | `server.port` / `SERVER_PORT` |
 | 网关端口 | 8080 | `server.port` / `GATEWAY_PORT` |

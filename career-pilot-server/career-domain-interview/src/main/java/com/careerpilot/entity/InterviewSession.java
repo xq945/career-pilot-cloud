@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.handlers.Jackson3TypeHandler;
+import com.careerpilot.dto.InterviewContextSnapshot;
 
 /**
  * 面试会话，对应《数据库设计》中的 interview_session（V1.4 起含 4 个总评列）。
@@ -52,6 +53,13 @@ public class InterviewSession {
 
     /** 来源优化记录（M12：可选；出题参考该优化的当前稿与匹配差距） */
     private Long optimizationId;
+
+    /**
+     * 阶段 8：创建时出题上下文的精简快照（岗位描述/分析技能列、简历或优化稿、能力差距）。
+     * 仅用于事后追溯；重新生成总评不读取该快照。
+     */
+    @TableField(typeHandler = Jackson3TypeHandler.class)
+    private InterviewContextSnapshot contextSnapshot;
 
     private String title;
 
@@ -136,6 +144,14 @@ public class InterviewSession {
 
     public void setOptimizationId(Long optimizationId) {
         this.optimizationId = optimizationId;
+    }
+
+    public InterviewContextSnapshot getContextSnapshot() {
+        return contextSnapshot;
+    }
+
+    public void setContextSnapshot(InterviewContextSnapshot contextSnapshot) {
+        this.contextSnapshot = contextSnapshot;
     }
 
     public String getTitle() {
