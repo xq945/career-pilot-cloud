@@ -5,6 +5,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ai.chat.client.ResponseEntity;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.metadata.ChatResponseMetadata;
@@ -69,9 +71,21 @@ public class AiCallTemplate {
 
     private final int structuredMaxAttempts;
 
-    public AiCallTemplate(LlmProviderRegistry llmProviderRegistry, AiCallProperties aiCallProperties) {
+    /** remote：业务服务把模型调用交给 career-ai；local：本进程直接调用模型 */
+    private final boolean remote;
+
+    private final AiChatClient aiChatClient;
+
+    public AiCallTemplate(LlmProviderRegistry llmProviderRegistry, AiCallProperties aiCallProperties,
+                          @Value("${app.ai.mode:local}") String mode,
+                          ObjectProvider<AiChatClient> aiChatClientProvider) {
         this.llmProviderRegistry = llmProviderRegistry;
         this.structuredMaxAttempts = aiCallProperties.structuredMaxAttempts();
+        this.remote = "remote".equalsIgnoreCase(mode);
+        this.aiChatClient = aiChatClientProvider.getIfAvailable();
+        if (this.remote && this.aiChatClient == null) {
+            throw new IllegalStateException("app.ai.mode=remote 但未装配 AiChatClient");
+        }
     }
 
     /**
@@ -85,6 +99,9 @@ public class AiCallTemplate {
      */
     public <T> AiCallResult<T> call(String scene, String systemPrompt, String userPrompt,
                                     Class<T> outputType) {
+        if (remote) {
+            return callRemote(scene, null, systemPrompt, userPrompt, outputType);
+        }
         LlmProviderRegistry.ResolvedClient resolved =
                 llmProviderRegistry.resolveForUser(CurrentUser.idOrNull());
         return callWithClient(scene, resolved, systemPrompt, userPrompt, outputType);
@@ -96,9 +113,104 @@ public class AiCallTemplate {
      */
     public <T> AiCallResult<T> call(String scene, String providerKey, String systemPrompt,
                                     String userPrompt, Class<T> outputType) {
+        if (remote) {
+            return callRemote(scene, providerKey, systemPrompt, userPrompt, outputType);
+        }
         LlmProviderRegistry.ResolvedClient resolved =
                 llmProviderRegistry.resolveByKey(CurrentUser.idOrNull(), providerKey);
         return callWithClient(scene, resolved, systemPrompt, userPrompt, outputType);
+    }
+
+    /**
+     * remote 模式：把一次模型调用交给 career-ai，本地只做结构化解析与修复重试。
+     */
+    private <T> AiCallResult<T> callRemote(String scene, String providerKey, String systemPrompt,
+                                           String userPrompt, Class<T> outputType) {
+        long startNanos = System.nanoTime();
+        RuntimeException lastError = null;
+        Long userId = CurrentUser.idOrNull();
+        for (int attempt = 1; attempt <= structuredMaxAttempts; attempt++) {
+            String attemptSystemPrompt = attempt == 1
+                    ? systemPrompt
+                    : systemPrompt + STRICT_JSON_REPAIR_HINT;
+            if (attempt > 1) {
+                log.warn("AI 输出无法解析，追加修复指令重试（remote）：scene={} attempt={}/{}",
+                        scene, attempt, structuredMaxAttempts);
+            }
+            try {
+                AiChatResponse response = aiChatClient.chat(new AiChatRequest(
+                        scene, userId, providerKey, attemptSystemPrompt, userPrompt));
+                if (response == null || response.content() == null || response.content().isBlank()) {
+                    log.warn("AI 输出为空（remote）：scene={}", scene);
+                    throw BusinessException.aiInvalidOutput(UNPARSABLE_MESSAGE);
+                }
+                BeanOutputConverter<T> converter = new BeanOutputConverter<>(outputType);
+                T value = new RepairingStructuredOutputConverter<>(converter, scene, log)
+                        .convert(response.content());
+                if (value == null) {
+                    throw BusinessException.aiInvalidOutput(UNPARSABLE_MESSAGE);
+                }
+                long elapsedMillis = elapsedMillis(startNanos);
+                log.info("AI 调用完成（remote）：scene={} model={} 耗时={}ms promptTokens={} completionTokens={} totalTokens={}",
+                        scene, response.modelName(), elapsedMillis,
+                        response.promptTokens(), response.completionTokens(), response.totalTokens());
+                return new AiCallResult<>(value, response.modelName(), response.providerKey(),
+                        elapsedMillis, response.promptTokens(), response.completionTokens(),
+                        response.totalTokens());
+            }
+            catch (BusinessException ex) {
+                throw ex;
+            }
+            catch (RuntimeException ex) {
+                if (!hasCause(ex, JacksonException.class)) {
+                    throw translate(scene, ex, startNanos);
+                }
+                lastError = ex;
+            }
+        }
+        throw translate(scene, lastError, startNanos);
+    }
+
+    /**
+     * 原始模型调用（不做结构化解析）：career-ai 的 /internal/chat 使用。
+     */
+    public AiChatResponse complete(String scene, String providerKey, String systemPrompt, String userPrompt) {
+        if (remote) {
+            return aiChatClient.chat(new AiChatRequest(
+                    scene, CurrentUser.idOrNull(), providerKey, systemPrompt, userPrompt));
+        }
+        LlmProviderRegistry.ResolvedClient resolved = (providerKey == null || providerKey.isBlank())
+                ? llmProviderRegistry.resolveForUser(CurrentUser.idOrNull())
+                : llmProviderRegistry.resolveByKey(CurrentUser.idOrNull(), providerKey);
+        long startNanos = System.nanoTime();
+        try {
+            ChatResponse response = resolved.chatClient().prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .call()
+                    .chatResponse();
+            String content = textOf(response);
+            if (content == null || content.isBlank()) {
+                log.warn("AI 输出为空（complete）：scene={}", scene);
+                throw BusinessException.aiInvalidOutput(UNPARSABLE_MESSAGE);
+            }
+            long elapsedMillis = elapsedMillis(startNanos);
+            String modelName = resolveModelName(response);
+            Usage usage = usageOf(response);
+            Integer promptTokens = usage == null ? null : usage.getPromptTokens();
+            Integer completionTokens = usage == null ? null : usage.getCompletionTokens();
+            Integer totalTokens = usage == null ? null : usage.getTotalTokens();
+            log.info("AI 调用完成（complete）：scene={} model={} 耗时={}ms promptTokens={} completionTokens={} totalTokens={}",
+                    scene, modelName, elapsedMillis, promptTokens, completionTokens, totalTokens);
+            return new AiChatResponse(content, modelName, resolved.providerKey(),
+                    promptTokens, completionTokens, totalTokens);
+        }
+        catch (BusinessException ex) {
+            throw ex;
+        }
+        catch (RuntimeException ex) {
+            throw translate(scene, ex, startNanos);
+        }
     }
 
     private <T> AiCallResult<T> callWithClient(String scene, LlmProviderRegistry.ResolvedClient resolved,
@@ -270,11 +382,18 @@ public class AiCallTemplate {
         return false;
     }
 
-    /** 异常消息的短摘要：折断换行并截断（防止把长响应体原样写进日志） */
+    /**
+     * 异常消息的短摘要：取**最深根因**（Jackson 的具体字段错误往往在 cause 中），
+     * 折断换行并截断（防止把长响应体原样写进日志）。
+     */
     private static String detailOf(Throwable ex) {
-        String message = ex.getMessage();
+        Throwable root = ex;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
         if (message == null || message.isBlank()) {
-            return "(无消息)";
+            return root.getClass().getSimpleName();
         }
         String flat = message.replaceAll("\\s+", " ").trim();
         return flat.length() > ERROR_DETAIL_LIMIT ? flat.substring(0, ERROR_DETAIL_LIMIT) + "…" : flat;

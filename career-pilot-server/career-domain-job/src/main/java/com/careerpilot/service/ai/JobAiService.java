@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.careerpilot.ai.AiCallResult;
@@ -21,6 +22,7 @@ import com.careerpilot.dto.ai.JobAnalysisAiOutput;
  * （《Agent设计》6.4 原则 3：两条入口共用同一套规则）。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.job", name = "mode", havingValue = "local", matchIfMissing = true)
 public class JobAiService {
 
     /** 场景名（日志与清洗日志用） */

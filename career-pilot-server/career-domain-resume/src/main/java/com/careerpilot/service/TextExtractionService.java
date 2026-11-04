@@ -12,6 +12,7 @@ import org.apache.tika.parser.pdf.PDFParserConfig;
 import org.apache.tika.sax.BodyContentHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.xml.sax.SAXException;
@@ -28,6 +29,7 @@ import com.careerpilot.common.BusinessException;
  * 后续 AI 分析的 source_hash 必须基于**同一份截断文本**计算（《数据库设计》5.2）。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.resume", name = "mode", havingValue = "local", matchIfMissing = true)
 public class TextExtractionService {
 
     private static final Logger log = LoggerFactory.getLogger(TextExtractionService.class);

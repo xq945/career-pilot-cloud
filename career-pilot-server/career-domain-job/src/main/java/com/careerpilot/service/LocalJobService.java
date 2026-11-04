@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -39,6 +40,7 @@ import com.careerpilot.mapper.JobMapper;
  * 注入会成环；stale 判定以静态纯函数形式复用。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.job", name = "mode", havingValue = "local", matchIfMissing = true)
 public class LocalJobService implements JobService {
 
     private final JobMapper jobMapper;

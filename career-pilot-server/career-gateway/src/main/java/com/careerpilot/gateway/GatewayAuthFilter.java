@@ -101,8 +101,16 @@ public class GatewayAuthFilter implements GlobalFilter, Ordered {
             Long userId = claims.get("userId", Number.class).longValue();
             String username = claims.getSubject();
             // 内部令牌的受众与目标服务一致：auth 服务只接受 aud=career-auth
-            String targetAudience = path.startsWith("/api/auth/") || path.startsWith("/api/user/")
-                    ? AUTH_AUDIENCE : APP_AUDIENCE;
+            String targetAudience;
+            if (path.startsWith("/api/auth/") || path.startsWith("/api/user/")) {
+                targetAudience = AUTH_AUDIENCE;
+            }
+            else if (path.equals("/api/llm-providers") || path.startsWith("/api/llm-providers/")) {
+                targetAudience = "career-ai";
+            }
+            else {
+                targetAudience = APP_AUDIENCE;
+            }
             String internalToken = internalTokenService.issue(userId, username, targetAudience);
             String traceId = request.getHeaders().getFirst(TRACE_HEADER);
             if (traceId == null || traceId.isBlank()) {

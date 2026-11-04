@@ -4,6 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import com.careerpilot.config.AgentProperties;
@@ -25,6 +26,7 @@ import com.careerpilot.config.OptimizationAsyncProperties;
  */
 @SpringBootApplication(exclude = UserDetailsServiceAutoConfiguration.class)
 @EnableScheduling
+@EnableFeignClients(basePackages = "com.careerpilot")
 @EnableConfigurationProperties({MatchScoringProperties.class, AgentProperties.class,
         LlmProperties.class, AiCallProperties.class, OptimizationAsyncProperties.class})
 public class CareerPilotApplication {

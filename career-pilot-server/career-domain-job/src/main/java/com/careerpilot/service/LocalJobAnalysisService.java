@@ -8,6 +8,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -42,6 +43,7 @@ import com.careerpilot.service.ai.JobAiService;
  * 用户身份一律由调用方从认证上下文取得后传入，绝不由模型提供。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.job", name = "mode", havingValue = "local", matchIfMissing = true)
 public class LocalJobAnalysisService implements JobAnalysisService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalJobAnalysisService.class);

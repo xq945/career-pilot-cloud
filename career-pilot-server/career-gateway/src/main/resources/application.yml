@@ -23,6 +23,10 @@ spring:
               uri: lb://career-auth
               predicates:
                 - Path=/api/auth/**,/api/user/**
+            - id: career-ai
+              uri: lb://career-ai
+              predicates:
+                - Path=/api/llm-providers/**
             - id: career-api
               uri: lb://career-pilot-server
               predicates:

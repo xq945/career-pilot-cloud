@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -50,6 +51,7 @@ import com.careerpilot.service.storage.FileStorageService;
  * DB 失败时补偿删除文件，删文件失败不阻塞（与 UserService 同法）。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.resume", name = "mode", havingValue = "local", matchIfMissing = true)
 public class LocalResumeService implements ResumeService {
 
     private static final Logger log = LoggerFactory.getLogger(LocalResumeService.class);
