@@ -12,9 +12,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
-import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.dto.DashboardGapItem;
 import com.careerpilot.dto.DashboardRecentMatch;
 import com.careerpilot.dto.DashboardRecentTask;
@@ -28,8 +26,6 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
  * 仪表盘汇总服务（《API接口设计》9.1）。
@@ -82,23 +78,23 @@ public class DashboardService {
 
     private final JobAnalysisService jobAnalysisService;
 
-    private final MatchRecordMapper matchRecordMapper;
+    private final MatchService matchService;
+
+    private final ResumeOptimizationService resumeOptimizationService;
 
     private final InterviewSessionMapper interviewSessionMapper;
 
-    private final ResumeOptimizationMapper resumeOptimizationMapper;
-
     public DashboardService(ResumeService resumeService, ResumeAnalysisService resumeAnalysisService,
                             JobService jobService, JobAnalysisService jobAnalysisService,
-                            MatchRecordMapper matchRecordMapper, InterviewSessionMapper interviewSessionMapper,
-                            ResumeOptimizationMapper resumeOptimizationMapper) {
+                            MatchService matchService, ResumeOptimizationService resumeOptimizationService,
+                            InterviewSessionMapper interviewSessionMapper) {
         this.resumeService = resumeService;
         this.resumeAnalysisService = resumeAnalysisService;
         this.jobService = jobService;
         this.jobAnalysisService = jobAnalysisService;
-        this.matchRecordMapper = matchRecordMapper;
+        this.matchService = matchService;
+        this.resumeOptimizationService = resumeOptimizationService;
         this.interviewSessionMapper = interviewSessionMapper;
-        this.resumeOptimizationMapper = resumeOptimizationMapper;
     }
 
     /** 汇总（9.1）：12 个字段一次装配返回 */
@@ -110,9 +106,8 @@ public class DashboardService {
         JobCounts jobCounts = jobCounts(userId);
         summary.setJobAnalyzedCount(jobCounts.analyzed());
         summary.setJobStaleCount(jobCounts.stale());
-        summary.setMatchCount(countOf(matchRecordMapper.selectCount(Wrappers.<MatchRecord>lambdaQuery()
-                .eq(MatchRecord::getUserId, userId))));
-        summary.setBestMatchScore(bestMatchScore(userId));
+        summary.setMatchCount((int) matchService.countOwnedMatches(userId));
+        summary.setBestMatchScore(matchService.bestMatchScore(userId));
         summary.setInterviewCount(countOf(interviewSessionMapper.selectCount(Wrappers.<InterviewSession>lambdaQuery()
                 .eq(InterviewSession::getUserId, userId))));
         summary.setInterviewOngoingCount(countOf(interviewSessionMapper.selectCount(
@@ -151,25 +146,9 @@ public class DashboardService {
 
     // ---------------------------------------------------------------- 匹配
 
-    /** 历史最高分；无记录时 null（BigDecimal → double，避免 82.40 尾零） */
-    private Double bestMatchScore(Long userId) {
-        MatchRecord best = matchRecordMapper.selectOne(Wrappers.<MatchRecord>lambdaQuery()
-                .select(MatchRecord::getMatchScore)
-                .eq(MatchRecord::getUserId, userId)
-                .orderByDesc(MatchRecord::getMatchScore)
-                .orderByDesc(MatchRecord::getId)
-                .last("LIMIT 1"));
-        return best == null ? null : best.getMatchScore().doubleValue();
-    }
-
     /** 最近 5 条匹配（created_at 倒序、id 倒序兜底；内联名称不过滤 status） */
     private List<DashboardRecentMatch> recentMatches(Long userId) {
-        Page<MatchRecord> page = new Page<>(1, RECENT_MATCH_LIMIT);
-        IPage<MatchRecord> result = matchRecordMapper.selectPage(page, Wrappers.<MatchRecord>lambdaQuery()
-                .eq(MatchRecord::getUserId, userId)
-                .orderByDesc(MatchRecord::getCreatedAt)
-                .orderByDesc(MatchRecord::getId));
-        List<MatchRecord> records = result.getRecords();
+        List<MatchRecord> records = matchService.recentMatches(userId, RECENT_MATCH_LIMIT);
         if (records.isEmpty()) {
             return List.of();
         }
@@ -191,11 +170,7 @@ public class DashboardService {
 
     /** 最近一次匹配的差距项：missing 在前、partial 在后，最多 3 条；无记录时空数组 */
     private List<DashboardGapItem> topGaps(Long userId) {
-        MatchRecord latest = matchRecordMapper.selectOne(Wrappers.<MatchRecord>lambdaQuery()
-                .eq(MatchRecord::getUserId, userId)
-                .orderByDesc(MatchRecord::getCreatedAt)
-                .orderByDesc(MatchRecord::getId)
-                .last("LIMIT 1"));
+        MatchRecord latest = matchService.latestMatchForUser(userId);
         if (latest == null) {
             return List.of();
         }
@@ -278,16 +253,9 @@ public class DashboardService {
 
     /** 优化任务：标题为「{简历名} · {岗位名}」（名称不过滤 status，源删除后仍显示） */
     private void appendOptimizationTasks(List<DashboardRecentTask> tasks, Long userId) {
-        List<ResumeOptimization> optimizations = resumeOptimizationMapper.selectList(
-                Wrappers.<ResumeOptimization>lambdaQuery()
-                        .select(ResumeOptimization::getId, ResumeOptimization::getResumeId,
-                                ResumeOptimization::getJobId, ResumeOptimization::getCreatedAt)
-                        .eq(ResumeOptimization::getUserId, userId)
-                        // M16：最近任务只取**成功完成**的优化（PENDING/PROCESSING/FAILED 不是"已完成的任务"）
-                        .eq(ResumeOptimization::getStatus, ResumeOptimization.STATUS_SUCCESS)
-                        .orderByDesc(ResumeOptimization::getCreatedAt)
-                        .orderByDesc(ResumeOptimization::getId)
-                        .last("LIMIT " + RECENT_TASK_PER_KIND));
+        // 口径由匹配服务保证：本人、SUCCESS、created_at 倒序、取前 N 条
+        List<ResumeOptimization> optimizations =
+                resumeOptimizationService.recentSuccessOptimizations(userId, RECENT_TASK_PER_KIND);
         if (optimizations.isEmpty()) {
             return;
         }

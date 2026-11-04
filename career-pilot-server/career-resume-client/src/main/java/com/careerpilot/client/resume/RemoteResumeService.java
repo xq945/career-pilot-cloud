@@ -44,12 +44,12 @@ public class RemoteResumeService implements ResumeService {
 
     @Override
     public PageResult<ResumeView> list(Long userId, PageQuery query) {
-        return publicClient.list(query.getPage(), query.getSize());
+        return publicClient.list(query.getPage(), query.getSize()).getData();
     }
 
     @Override
     public ResumeDetail detail(Long userId, Long id) {
-        return publicClient.detail(id);
+        return publicClient.detail(id).getData();
     }
 
     @Override

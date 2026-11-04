@@ -6,11 +6,13 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.careerpilot.config.OptimizationAsyncProperties;
+import com.careerpilot.config.WorkerRoleCondition;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.optimization.OptimizationStreamProducer.OptimizationTask;
@@ -27,12 +29,13 @@ import com.careerpilot.service.optimization.OptimizationStreamProducer.Optimizat
  * </ul>
  *
  * <p>补投仍走同一条 Stream（消费者侧的"条件领取"保证重复消息不会重复执行）。
- * 不引入"恢复次数上限"：失败会落 FAILED 终态、重试由用户显式发起（见 §6A.7），
- * 恢复调度只负责"让没跑完的任务继续跑"。
+ * PROCESSING 自动恢复有次数上限（{@code max-recovery-count}）：达到上限的毒任务直接置
+ * FAILED，避免无限重跑；用户手动重试会重置计数（见 §6A.7）。
  */
 @Component
 @ConditionalOnProperty(prefix = "app.optimization.async", name = "enabled",
         havingValue = "true", matchIfMissing = true)
+@Conditional(WorkerRoleCondition.class)
 public class OptimizationRecoveryScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(OptimizationRecoveryScheduler.class);

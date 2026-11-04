@@ -20,7 +20,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.careerpilot.common.Hashing;
 import com.careerpilot.dto.DashboardGapItem;
 import com.careerpilot.dto.DashboardRecentMatch;
@@ -35,8 +34,6 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
  * 仪表盘汇总的护栏（《API接口设计》9.1）。
@@ -66,13 +63,13 @@ class DashboardServiceTest {
     private JobAnalysisService jobAnalysisService;
 
     @Mock
-    private MatchRecordMapper matchRecordMapper;
+    private MatchService matchService;
+
+    @Mock
+    private ResumeOptimizationService resumeOptimizationService;
 
     @Mock
     private InterviewSessionMapper interviewSessionMapper;
-
-    @Mock
-    private ResumeOptimizationMapper resumeOptimizationMapper;
 
     @InjectMocks
     private DashboardService dashboardService;
@@ -81,8 +78,8 @@ class DashboardServiceTest {
 
     @Test
     void summary_emptyAccount_zeroCountsAndNullBoundaries() {
-        stubEmptyMatchPage();
-
+        // Mockito 对 Double 返回值默认给 0.0，显式声明"无记录时无最高分"
+        when(matchService.bestMatchScore(USER_ID)).thenReturn(null);
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         assertEquals(0, summary.getResumeCount());
@@ -111,8 +108,6 @@ class DashboardServiceTest {
     void summary_resumeAnalyzedCount_comesFromResumeService() {
         // 口径（去重后的有效简历 ∩ 有成功分析）由简历服务实现，仪表盘只取数
         when(resumeAnalysisService.countAnalyzedResumes(USER_ID)).thenReturn(2L);
-        stubEmptyMatchPage();
-
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         assertEquals(2, summary.getResumeAnalyzedCount());
@@ -126,8 +121,6 @@ class DashboardServiceTest {
                 job(23L, "岗位C", "描述C-新")));
         when(jobAnalysisService.countAnalyzedJobs(USER_ID)).thenReturn(2L);
         when(jobAnalysisService.countStaleJobs(USER_ID)).thenReturn(1L);
-        stubEmptyMatchPage();
-
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         // 无分析的岗位不计 analyzed；23 号的描述与最新分析不同源 → stale
@@ -140,8 +133,6 @@ class DashboardServiceTest {
         when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(job(23L, "岗位", "描述-新版")));
         when(jobAnalysisService.countAnalyzedJobs(USER_ID)).thenReturn(1L);
         when(jobAnalysisService.countStaleJobs(USER_ID)).thenReturn(0L);
-        stubEmptyMatchPage();
-
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         // 取 versionNo 最大者（v2 与当前描述同源）→ 不过期
@@ -152,10 +143,8 @@ class DashboardServiceTest {
     // ---------------------------------------------------------------- 匹配：最高分与最近记录
 
     @Test
-    void summary_bestMatchScore_trimsTrailingZero() {
-        when(matchRecordMapper.selectOne(any())).thenReturn(matchRecord(701L, new BigDecimal("82.40")));
-        stubEmptyMatchPage();
-
+    void summary_bestMatchScore_comesFromMatchService() {
+        when(matchService.bestMatchScore(USER_ID)).thenReturn(82.4);
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         assertEquals(82.4, summary.getBestMatchScore());
@@ -163,13 +152,11 @@ class DashboardServiceTest {
 
     @Test
     void summary_recentMatches_mapsEightFieldsAndKeepsDeletedSourceNames() {
-        Page<MatchRecord> page = new Page<>(1, 5);
         MatchRecord newest = matchRecord(702L, new BigDecimal("91.5"));
         newest.setCreatedAt(LocalDateTime.of(2026, 10, 12, 10, 0));
         MatchRecord older = matchRecord(701L, new BigDecimal("80.0"));
         older.setCreatedAt(LocalDateTime.of(2026, 10, 11, 9, 0));
-        page.setRecords(List.of(newest, older));
-        when(matchRecordMapper.selectPage(any(), any())).thenReturn(page);
+        when(matchService.recentMatches(eq(USER_ID), anyInt())).thenReturn(List.of(newest, older));
 
         // 源资源已逻辑删除：关联查询不过滤 status，名称仍须显示（同 6.2 的可见性规则）
         Resume deletedResume = resume(11L, "Java后端简历");
@@ -205,9 +192,7 @@ class DashboardServiceTest {
                 item("缺 Redis", "preferredSkills"),
                 item("缺 K8s", null)));
         latest.setPartialItems(List.of(item("项目经验偏浅", "projectRelevance")));
-        when(matchRecordMapper.selectOne(any())).thenReturn(latest);
-        stubEmptyMatchPage();
-
+        when(matchService.latestMatchForUser(USER_ID)).thenReturn(latest);
         List<DashboardGapItem> gaps = dashboardService.summary(USER_ID).getTopGaps();
 
         // missing 共 3 条已占满上限：partial 被截掉；dimension 为 null 时原样保留
@@ -225,9 +210,7 @@ class DashboardServiceTest {
         MatchRecord latest = matchRecord(704L, new BigDecimal("70.0"));
         latest.setMissingItems(List.of(item("缺 A", null), item("缺 B", null)));
         latest.setPartialItems(List.of(item("部分 A", null), item("部分 B", null)));
-        when(matchRecordMapper.selectOne(any())).thenReturn(latest);
-        stubEmptyMatchPage();
-
+        when(matchService.latestMatchForUser(USER_ID)).thenReturn(latest);
         List<DashboardGapItem> gaps = dashboardService.summary(USER_ID).getTopGaps();
 
         assertEquals(3, gaps.size());
@@ -240,9 +223,8 @@ class DashboardServiceTest {
     @Test
     void summary_topGaps_nullListsAreSafe() {
         // 明细列为 null（历史数据 / 模型输出空）时不抛异常，返回空数组
-        when(matchRecordMapper.selectOne(any())).thenReturn(matchRecord(705L, new BigDecimal("60.0")));
-        stubEmptyMatchPage();
-
+        when(matchService.latestMatchForUser(USER_ID))
+                .thenReturn(matchRecord(705L, new BigDecimal("60.0")));
         assertTrue(dashboardService.summary(USER_ID).getTopGaps().isEmpty());
     }
 
@@ -252,8 +234,6 @@ class DashboardServiceTest {
     void summary_interviewCounts_totalOngoingCompleted() {
         // 三次 selectCount 依次为：总数（含 1 条已取消）、进行中、已完成
         when(interviewSessionMapper.selectCount(any())).thenReturn(3L, 1L, 1L);
-        stubEmptyMatchPage();
-
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         // status = 2（已取消）计入总数、不计入两个细分（第一版无取消入口，仅口径防御）
@@ -277,14 +257,12 @@ class DashboardServiceTest {
         when(jobService.listJobsByIds(any())).thenReturn(List.of(job(21L, "岗位A", "描述A")));
         when(jobAnalysisService.recentAnalyses(eq(USER_ID), anyInt())).thenReturn(List.of(
                 jobAnalysisAt(21L, "2026-10-14T10:00:03")));
-        when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
+        when(resumeOptimizationService.recentSuccessOptimizations(eq(USER_ID), anyInt())).thenReturn(List.of(
                 optimization(301L, 11L, 21L, "2026-10-14T10:00:02"),
                 optimization(302L, 12L, 21L, "2026-10-14T10:00:01")));
         when(interviewSessionMapper.selectList(any())).thenReturn(List.of(
                 interviewSession(801L, "面试一", "2026-10-14T10:00:07"),
                 interviewSession(802L, "面试二", "2026-10-14T10:00:06")));
-        stubEmptyMatchPage();
-
         List<DashboardRecentTask> tasks = dashboardService.summary(USER_ID).getRecentTasks();
 
         // 候选 7 条（2 简历分析 + 1 岗位分析 + 2 优化 + 2 面试），按时间倒序截断到 6
@@ -304,8 +282,6 @@ class DashboardServiceTest {
         // 无有效简历（含全部已删的情形——wrapper 的 status 过滤由真库执行，见接口层脚本）：
         // 分析查询整体短路，任务线为空
         when(resumeService.listOwnedResumes(USER_ID)).thenReturn(List.of());
-        stubEmptyMatchPage();
-
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         assertTrue(summary.getRecentTasks().isEmpty());
@@ -323,10 +299,8 @@ class DashboardServiceTest {
         when(resumeService.listResumesByIds(any())).thenReturn(List.of(deletedResume));
         when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(deletedJob));
         when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
-        when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
+        when(resumeOptimizationService.recentSuccessOptimizations(eq(USER_ID), anyInt())).thenReturn(List.of(
                 optimization(301L, 11L, 21L, "2026-10-14T10:00:02")));
-        stubEmptyMatchPage();
-
         List<DashboardRecentTask> tasks = dashboardService.summary(USER_ID).getRecentTasks();
 
         assertEquals(1, tasks.size());
@@ -335,13 +309,6 @@ class DashboardServiceTest {
     }
 
     // ---------------------------------------------------------------- 辅助
-
-    /** 最近匹配分页默认返回空页（Mockito 对 Page 默认返回 null，必须显式 stub） */
-    private void stubEmptyMatchPage() {
-        Page<MatchRecord> page = new Page<>(1, 5);
-        page.setRecords(List.of());
-        when(matchRecordMapper.selectPage(any(), any())).thenReturn(page);
-    }
 
     private Resume resume(Long id, String name) {
         Resume resume = new Resume();

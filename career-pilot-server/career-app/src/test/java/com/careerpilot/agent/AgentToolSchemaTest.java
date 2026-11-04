@@ -40,9 +40,7 @@ class AgentToolSchemaTest {
         registry = new AgentToolRegistry(
                 new ResumeAgentTools(mock(ResumeService.class), mock(ResumeAnalysisService.class)),
                 new JobAgentTools(mock(JobService.class), mock(JobAnalysisService.class)),
-                new MatchAgentTools(mock(ResumeService.class), mock(JobService.class),
-                        mock(ResumeAnalysisService.class), mock(JobAnalysisService.class),
-                        mock(MatchService.class)),
+                new MatchAgentTools(mock(MatchService.class)),
                 new InterviewAgentTools(mock(JobService.class), mock(InterviewService.class)));
     }
 

@@ -1,9 +1,12 @@
 package com.careerpilot.service.optimization;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -12,6 +15,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -19,6 +23,7 @@ import com.careerpilot.common.BusinessException;
 import com.careerpilot.common.Hashing;
 import com.careerpilot.dto.MatchDetail;
 import com.careerpilot.dto.MatchDimensionScores;
+import com.careerpilot.dto.OptimizationInputSnapshot;
 import com.careerpilot.entity.Job;
 import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.Resume;
@@ -165,5 +170,53 @@ class OptimizationTaskRunnerTest {
         verify(matchService, never()).create(any(), any(), any(), any());
         verify(resumeOptimizationAiService, never()).generate(any(), any(), any(), any());
         verify(stateService, never()).complete(any(), any(), any(), any(), any(), any());
+    }
+
+    /** 阶段 7：有输入快照时只读快照，不再回查简历/岗位/分析服务。 */
+    @Test
+    void run_withInputSnapshot_usesSnapshotWithoutRemoteLookups() {
+        ResumeOptimization record = new ResumeOptimization();
+        record.setId(OPTIMIZATION_ID);
+        record.setUserId(7L);
+        record.setResumeId(RESUME_ID);
+        record.setJobId(JOB_ID);
+        ResumeAnalysis resumeAnalysis = new ResumeAnalysis();
+        resumeAnalysis.setId(21L);
+        JobAnalysis jobAnalysis = new JobAnalysis();
+        jobAnalysis.setId(11L);
+        jobAnalysis.setSourceHash(Hashing.sha256Hex(DESCRIPTION));
+        OptimizationInputSnapshot snapshot = new OptimizationInputSnapshot();
+        snapshot.setResumeContent("快照中的简历正文");
+        snapshot.setJobDescription(DESCRIPTION);
+        snapshot.setResumeAnalysis(resumeAnalysis);
+        snapshot.setJobAnalysis(jobAnalysis);
+        snapshot.setRuleVersion("v1");
+        record.setInputSnapshot(snapshot);
+
+        MatchScoringResult scoring = new MatchScoringResult(
+                new BigDecimal("75.75"), new MatchDimensionScores("v1", List.of()), List.of());
+        MatchDetail match = new MatchDetail();
+        match.setId(501L);
+
+        when(optimizationMapper.selectById(OPTIMIZATION_ID)).thenReturn(record);
+        when(stateService.updateStage(OPTIMIZATION_ID, "attempt-1",
+                ResumeOptimization.STAGE_MATCHING)).thenReturn(true);
+        when(stateService.updateStage(OPTIMIZATION_ID, "attempt-1",
+                ResumeOptimization.STAGE_GENERATING)).thenReturn(true);
+        when(matchScoringService.score(jobAnalysis, resumeAnalysis)).thenReturn(scoring);
+        when(matchService.create(any(Resume.class), any(Job.class), eq(resumeAnalysis), eq(jobAnalysis)))
+                .thenReturn(match);
+        when(resumeOptimizationAiService.generate(any(Resume.class), eq(jobAnalysis), eq(resumeAnalysis), eq(scoring)))
+                .thenThrow(BusinessException.aiInvalidOutput("快照测试中断"));
+
+        assertThatThrownBy(() -> runner.run(OPTIMIZATION_ID, "attempt-1"))
+                .isInstanceOf(BusinessException.class);
+
+        // 关键：快照路径不得触发任何源资源远程查询
+        verifyNoInteractions(resumeService, jobService, resumeAnalysisService, jobAnalysisService);
+        ArgumentCaptor<Resume> resumeCaptor = ArgumentCaptor.forClass(Resume.class);
+        verify(matchService).create(resumeCaptor.capture(), any(Job.class), eq(resumeAnalysis), eq(jobAnalysis));
+        assertThat(resumeCaptor.getValue().getContent()).isEqualTo("快照中的简历正文");
+        assertThat(resumeCaptor.getValue().getUserId()).isEqualTo(7L);
     }
 }

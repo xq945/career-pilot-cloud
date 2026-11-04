@@ -34,29 +34,29 @@ public class RemoteJobService implements JobService {
 
     @Override
     public JobDetail create(Long userId, JobSaveRequest request) {
-        return publicClient.create(request);
+        return publicClient.create(request).getData();
     }
 
     @Override
     public PageResult<JobView> list(Long userId, PageQuery query) {
-        return publicClient.list(query.getPage(), query.getSize());
+        return publicClient.list(query.getPage(), query.getSize()).getData();
     }
 
     @Override
     public JobDetail detail(Long userId, Long id) {
-        return publicClient.detail(id);
+        return publicClient.detail(id).getData();
     }
 
     @Override
     public JobDetail update(Long userId, Long id, JobSaveRequest request) {
-        return publicClient.update(id, request);
+        return publicClient.update(id, request).getData();
     }
 
     @Override
     public JobDetail updateProgressStatus(Long userId, Long id, String progressStatus) {
         JobStatusRequest request = new JobStatusRequest();
         request.setStatus(progressStatus);
-        return publicClient.updateStatus(id, request);
+        return publicClient.updateStatus(id, request).getData();
     }
 
     @Override

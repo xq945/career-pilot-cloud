@@ -164,11 +164,10 @@ app:
     expiry-cron: ${APP_SCHEDULE_EXPIRY_CRON:0 0 * * * *}
   optimization:
     async:
-      # 「创建优化」异步链路（M16）：Redis Stream 任务队列 + 卡住任务恢复
-      # （《系统架构设计》§6.5）。enabled=false 时走同步执行（与 M11 行为一致）——
-      # 无 Redis 环境的回退开关；入队失败时也自动降级为同步执行（§6A.1）。
-      # 仅开启时 Redis 才是**启动前置依赖**（连接失败即启动失败，避免任务永不执行的隐性故障）。
-      enabled: ${APP_OPTIMIZATION_ASYNC_ENABLED:true}
+      # 阶段 7：匹配与优化链路已拆到 career-match，单体不再消费任务队列。
+      # 此处必须保持关闭，否则 RedisStreamService 会尝试装配（Redis 成为无谓的启动依赖）。
+      # 回滚到单体优化时：app.match.mode=local + 本开关改回 true。
+      enabled: ${APP_OPTIMIZATION_ASYNC_ENABLED:false}
       redis-address: ${APP_OPTIMIZATION_ASYNC_REDIS_ADDRESS:redis://localhost:6379}
       redis-database: ${APP_OPTIMIZATION_ASYNC_REDIS_DATABASE:0}
       # PENDING 超时（投递丢失判定）——必须大于正常排队时间（消费者单线程，单任务 25–80s）。
@@ -181,6 +180,8 @@ app:
       # PROCESSING 超时被自动恢复的最大次数；超过后置 FAILED，避免毒任务无限重跑
       max-recovery-count: 3
   match:
+    # 阶段 7：匹配/优化域由 career-match 服务提供；单体通过 Feign 远程实现访问
+    mode: ${APP_MATCH_MODE:remote}
     # 匹配评分规则（《数据库设计》6.1「权重入配置」）：
     # 调整权重或算法时必须手工递增 rule-version，随报告写入 dimension_scores.ruleVersion；
     # 五项权重之和必须为 100、不允许负值，否则应用启动即失败（MatchScoringProperties 构造校验）。

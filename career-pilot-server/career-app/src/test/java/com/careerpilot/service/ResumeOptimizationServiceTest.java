@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -49,6 +50,7 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
+import com.careerpilot.config.MatchScoringProperties;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.service.optimization.OptimizationStreamProducer;
 import com.careerpilot.service.optimization.OptimizationTaskRunner;
@@ -118,17 +120,21 @@ class ResumeOptimizationServiceTest {
     @Mock
     private ObjectProvider<OptimizationStreamProducer> streamProducerProvider;
 
-    private ResumeOptimizationService service;
+    @Mock
+    private MatchScoringProperties matchScoringProperties;
+
+    private LocalResumeOptimizationService service;
 
     /** insert 时写入的实体引用（create 末尾 selectById 回读用） */
     private ResumeOptimization insertedRecord;
 
     @BeforeEach
     void setUp() {
-        service = new ResumeOptimizationService(optimizationMapper, matchRecordMapper,
+        service = new LocalResumeOptimizationService(optimizationMapper, matchRecordMapper,
                 resumeService, jobService, resumeAnalysisService,
                 jobAnalysisService, matchService, matchScoringService, resumeOptimizationAiService, resumeAiService,
-                taskRunner, stateService, streamProducerProvider);
+                taskRunner, stateService, streamProducerProvider, matchScoringProperties);
+        lenient().when(matchScoringProperties.ruleVersion()).thenReturn("v1");
     }
 
     // ---------------------------------------------------------------- 创建前置校验

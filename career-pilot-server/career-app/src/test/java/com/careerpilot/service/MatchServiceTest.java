@@ -85,7 +85,7 @@ class MatchServiceTest {
     private MatchAiService matchAiService;
 
     @InjectMocks
-    private MatchService matchService;
+    private LocalMatchService matchService;
 
     // ---------------------------------------------------------------- 创建：主路径
 
@@ -275,6 +275,49 @@ class MatchServiceTest {
                 () -> matchService.detail(USER_ID, 99L));
 
         assertEquals(40400, ex.getCode());
+    }
+
+    // ---------------------------------------------------------------- Agent 入口（阶段 7）
+
+    @Test
+    void createForAgent_missingAnalyses_autoFillsThenMatches() {
+        Resume resume = resume();
+        Job job = job();
+        ResumeAnalysis resumeAnalysis = resumeAnalysis();
+        JobAnalysis jobAnalysis = jobAnalysis(Hashing.sha256Hex(DESCRIPTION));
+        when(resumeService.getOwnedResume(USER_ID, RESUME_ID)).thenReturn(resume);
+        when(jobService.getOwnedJob(USER_ID, JOB_ID)).thenReturn(job);
+        // 双方都缺分析：补齐后再次查询能拿到结果
+        when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(null, resumeAnalysis);
+        when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(null, jobAnalysis);
+        when(matchScoringService.score(jobAnalysis, resumeAnalysis)).thenReturn(scoring());
+        when(matchAiService.explain(eq(jobAnalysis), eq(resumeAnalysis), any()))
+                .thenReturn(new AiCallResult<>(explanation(), "test-model", 100L, 1, 1, 2));
+
+        MatchDetail detail = matchService.createForAgent(USER_ID, RESUME_ID, JOB_ID);
+
+        verify(resumeAnalysisService).analyze(resume);
+        verify(jobAnalysisService).analyze(job);
+        verify(matchRecordMapper).insert(any(MatchRecord.class));
+        assertEquals("Java后端简历", detail.getResumeName());
+    }
+
+    @Test
+    void createForAgent_freshAnalyses_doesNotReanalyze() {
+        JobAnalysis jobAnalysis = jobAnalysis(Hashing.sha256Hex(DESCRIPTION));
+        ResumeAnalysis resumeAnalysis = resumeAnalysis();
+        when(resumeService.getOwnedResume(USER_ID, RESUME_ID)).thenReturn(resume());
+        when(jobService.getOwnedJob(USER_ID, JOB_ID)).thenReturn(job());
+        when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis);
+        when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis);
+        when(matchScoringService.score(jobAnalysis, resumeAnalysis)).thenReturn(scoring());
+        when(matchAiService.explain(eq(jobAnalysis), eq(resumeAnalysis), any()))
+                .thenReturn(new AiCallResult<>(explanation(), "test-model", 100L, 1, 1, 2));
+
+        matchService.createForAgent(USER_ID, RESUME_ID, JOB_ID);
+
+        verify(resumeAnalysisService, never()).analyze(any(Resume.class));
+        verify(jobAnalysisService, never()).analyze(any(Job.class));
     }
 
     // ---------------------------------------------------------------- 辅助

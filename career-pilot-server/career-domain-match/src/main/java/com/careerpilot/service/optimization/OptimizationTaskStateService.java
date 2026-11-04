@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -27,6 +28,7 @@ import com.careerpilot.mapper.ResumeOptimizationMapper;
  * 都会显式推进它（恢复调度据此判定"卡住"）。
  */
 @Service
+@ConditionalOnProperty(prefix = "app.match", name = "mode", havingValue = "local", matchIfMissing = true)
 public class OptimizationTaskStateService {
 
     private static final Logger log = LoggerFactory.getLogger(OptimizationTaskStateService.class);

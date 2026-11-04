@@ -1,0 +1,101 @@
+server:
+  port: ${MATCH_PORT:8084}
+
+spring:
+  application:
+    name: career-match
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: CAREER_PILOT
+        enabled: ${NACOS_ENABLED:true}
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://localhost:3306/cp_match?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      # 本服务只走 remote 模式，占位 Key 仅为满足自动配置，不发起本地模型调用
+      api-key: ${DEEPSEEK_API_KEY:remote-mode-placeholder}
+      chat:
+        thinking:
+          type: disabled
+        options:
+          model: deepseek-flash
+          temperature: 0.3
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 500ms
+        multiplier: 1
+        max-interval: 1s
+    chat:
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+  http:
+    clients:
+      connect-timeout: 10s
+      read-timeout: 60s
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:}
+    expiration-seconds: 7200
+  internal-token:
+    ttl-seconds: 300
+    audience: career-match
+  ai:
+    mode: remote
+    structured-max-attempts: 2
+  llm:
+    encryption-key: ${APP_LLM_ENCRYPTION_KEY:}
+    connect-timeout: 10s
+    read-timeout: 60s
+  match:
+    mode: local
+    # 评分配置（MatchScoringProperties fail-fast 校验；权重之和必须为 100）
+    rule-version: v1
+    weights:
+      required-skills: 45
+      project-relevance: 25
+      experience: 15
+      education: 10
+      preferred-skills: 5
+  resume:
+    # 匹配服务只通过 Feign 访问简历服务（阶段 7 依赖方向 L3 → L2）
+    mode: remote
+  job:
+    mode: remote
+  optimization:
+    # all = API + Worker；api = 只接请求；worker = 只执行任务（可水平扩容）
+    role: ${APP_OPTIMIZATION_ROLE:all}
+    async:
+      enabled: ${APP_OPTIMIZATION_ASYNC_ENABLED:true}
+      redis-address: ${APP_OPTIMIZATION_ASYNC_REDIS_ADDRESS:redis://localhost:6379}
+      redis-database: ${APP_OPTIMIZATION_ASYNC_REDIS_DATABASE:0}
+      pending-timeout: 5m
+      processing-timeout: 10m
+      scan-interval: 60s
+      max-recovery-count: 3
+  file:
+    # 匹配链路不读写文件；本配置仅为满足被扫描的 FileStorageProperties（简历域传递依赖）
+    storage-type: ${FILE_STORAGE_TYPE:local}
+    storage-root: ${FILE_STORAGE_ROOT:${user.home}/career-pilot-uploads}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

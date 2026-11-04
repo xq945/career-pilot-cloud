@@ -12,6 +12,7 @@ import com.baomidou.mybatisplus.extension.handlers.Jackson3TypeHandler;
 
 import com.careerpilot.dto.EditSnapshot;
 import com.careerpilot.dto.MatchDimensionScores;
+import com.careerpilot.dto.OptimizationInputSnapshot;
 import com.careerpilot.dto.ai.ChangeItem;
 import com.careerpilot.dto.ai.ResumeAnalysisAiOutput;
 
@@ -115,6 +116,13 @@ public class ResumeOptimization {
 
     /** M14：创建时钉住的模型服务标识（快照列，不建外键；未配置用户为 null） */
     private String llmProviderKey;
+
+    /**
+     * 阶段 7：创建任务时固化的输入快照（简历原文、岗位描述、双方分析、规则版本）。
+     * 旧数据为 null，执行时回退到远程查询。
+     */
+    @TableField(typeHandler = Jackson3TypeHandler.class)
+    private OptimizationInputSnapshot inputSnapshot;
 
     private String status;
 
@@ -267,6 +275,14 @@ public class ResumeOptimization {
 
     public void setLlmProviderKey(String llmProviderKey) {
         this.llmProviderKey = llmProviderKey;
+    }
+
+    public OptimizationInputSnapshot getInputSnapshot() {
+        return inputSnapshot;
+    }
+
+    public void setInputSnapshot(OptimizationInputSnapshot inputSnapshot) {
+        this.inputSnapshot = inputSnapshot;
     }
 
     public String getAttemptId() {

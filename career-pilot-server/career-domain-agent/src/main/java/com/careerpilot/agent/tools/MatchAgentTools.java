@@ -9,48 +9,26 @@ import org.springframework.stereotype.Component;
 
 import com.careerpilot.ai.AgentToolPayloads;
 import com.careerpilot.dto.MatchDetail;
-import com.careerpilot.entity.Job;
-import com.careerpilot.entity.JobAnalysis;
-import com.careerpilot.entity.Resume;
-import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.security.CurrentUser;
-import com.careerpilot.service.JobAnalysisService;
-import com.careerpilot.service.JobService;
 import com.careerpilot.service.MatchService;
-import com.careerpilot.service.ResumeAnalysisService;
-import com.careerpilot.service.ResumeService;
 
 /**
  * 匹配类 Agent 工具（《Agent设计》§4.4）。
  *
  * <p>与 REST {@code POST /api/matches} 的**唯一差异**（《系统架构设计》§6.2：
  * 有意设计、须防实现分叉）：缺分析或岗位分析过期时，REST 返回 400 要求用户先去分析，
- * **本工具自动代为补齐**再匹配。其余规则（归属校验、source_hash 复用、评分权重、
- * 失败处理、事务边界）完全共用 {@link MatchService#create(Resume, Job, ResumeAnalysis, JobAnalysis)}，
- * 行为不因入口不同而分叉。
+ * **匹配服务的 Agent 入口自动代为补齐**再匹配（阶段 7 起该逻辑下沉到
+ * {@link MatchService#createForAgent(Long, Long, Long)}，工具只负责一次远程调用）。
+ * 其余规则（归属校验、评分权重、失败处理）由匹配服务统一保证。
  *
  * <p>匹配总分**只来自规则计算**（MatchScoringService），模型只负责解释（AG-08）。
  */
 @Component
 public class MatchAgentTools {
 
-    private final ResumeService resumeService;
-
-    private final JobService jobService;
-
-    private final ResumeAnalysisService resumeAnalysisService;
-
-    private final JobAnalysisService jobAnalysisService;
-
     private final MatchService matchService;
 
-    public MatchAgentTools(ResumeService resumeService, JobService jobService,
-                           ResumeAnalysisService resumeAnalysisService,
-                           JobAnalysisService jobAnalysisService, MatchService matchService) {
-        this.resumeService = resumeService;
-        this.jobService = jobService;
-        this.resumeAnalysisService = resumeAnalysisService;
-        this.jobAnalysisService = jobAnalysisService;
+    public MatchAgentTools(MatchService matchService) {
         this.matchService = matchService;
     }
 
@@ -61,25 +39,8 @@ public class MatchAgentTools {
             @ToolParam(description = "简历 ID，必须是当前用户拥有的简历") Long resumeId,
             @ToolParam(description = "岗位 ID，必须是当前用户拥有的岗位") Long jobId) {
         Long userId = CurrentUser.requireId();
-        Resume resume = resumeService.getOwnedResume(userId, resumeId);
-        Job job = jobService.getOwnedJob(userId, jobId);
-
-        // —— 与 REST 的差异：缺分析时自动补齐（补齐同样受工具次数/总耗时上限约束）——
-        ResumeAnalysis resumeAnalysis = resumeAnalysisService.findLatestSuccess(resumeId);
-        if (resumeAnalysis == null) {
-            resumeAnalysisService.analyze(resume);
-            resumeAnalysis = resumeAnalysisService.findLatestSuccess(resumeId);
-        }
-        JobAnalysis jobAnalysis = jobAnalysisService.findLatestSuccess(jobId);
-        // 注意：isStale 对"无分析"恒为 false（无分析谈不上过期），必须显式判空
-        if (jobAnalysis == null || JobAnalysisService.isStale(job.getDescription(), jobAnalysis)) {
-            // 缺分析或分析已过期（岗位描述被改过）：重算，analyze 内部按 source_hash 决定复用/生成
-            jobAnalysisService.analyze(job);
-            jobAnalysis = jobAnalysisService.findLatestSuccess(jobId);
-        }
-
-        // 评分为确定性规则计算（MatchScoringService），与 REST 共用同一实现
-        MatchDetail detail = matchService.create(resume, job, resumeAnalysis, jobAnalysis);
+        // 一次远程调用：归属校验、缺分析/过期补齐、规则评分与落库全部在 career-match 内完成
+        MatchDetail detail = matchService.createForAgent(userId, resumeId, jobId);
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("matchId", detail.getId());

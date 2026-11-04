@@ -48,8 +48,6 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 import com.careerpilot.service.ai.InterviewSummaryFallback;
 
@@ -75,9 +73,7 @@ class InterviewServiceTest {
 
     private ResumeOptimizationService resumeOptimizationService;
 
-    private MatchRecordMapper matchRecordMapper;
-
-    private ResumeOptimizationMapper resumeOptimizationMapper;
+    private MatchService matchService;
 
     private InterviewService service;
 
@@ -91,13 +87,11 @@ class InterviewServiceTest {
         summaryFallback = mock(InterviewSummaryFallback.class);
         resumeService = mock(ResumeService.class);
         resumeOptimizationService = mock(ResumeOptimizationService.class);
-        matchRecordMapper = mock(MatchRecordMapper.class);
-        resumeOptimizationMapper = mock(ResumeOptimizationMapper.class);
+        matchService = mock(MatchService.class);
         service = new InterviewService(sessionMapper, questionMapper,
                 jobService, mock(JobAnalysisService.class),
                 aiService, txService, summaryFallback,
-                resumeService, resumeOptimizationService, matchRecordMapper,
-                resumeOptimizationMapper);
+                resumeService, resumeOptimizationService, matchService);
         // M15：历史题去重查询的宽松桩（不走创建路径的用例不受影响）
         lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
     }
@@ -154,7 +148,7 @@ class InterviewServiceTest {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
         when(resumeOptimizationService.getOwned(eq(1L), eq(301L)))
                 .thenReturn(optimization(301L, 101L, 9L, 201L));
-        when(matchRecordMapper.selectById(201L)).thenReturn(matchRecord(201L));
+        when(matchService.getOwnedMatch(eq(1L), eq(201L))).thenReturn(matchRecord(201L));
         stubGenerateSuccess();
 
         InterviewCreateRequest request = createRequest(9L, 3);
@@ -224,7 +218,7 @@ class InterviewServiceTest {
     void create_withResumeOnly_usesTextAndLatestMatchGaps() {
         when(jobService.getOwnedJob(eq(1L), eq(9L))).thenReturn(job());
         when(resumeService.getOwnedResume(eq(1L), eq(101L))).thenReturn(resume(101L));
-        when(matchRecordMapper.selectOne(any())).thenReturn(matchRecord(201L));
+        when(matchService.latestMatch(eq(1L), eq(101L), eq(9L))).thenReturn(matchRecord(201L));
         stubGenerateSuccess();
 
         InterviewCreateRequest request = createRequest(9L, 3);
@@ -249,7 +243,7 @@ class InterviewServiceTest {
 
         verify(aiService).generate(any(), any(), eq("MIXED"), eq(3), isNull(), isNull(), anyList());
         // 无来源时不查任何上下文资源（与历史行为等价）
-        verifyNoInteractions(resumeService, resumeOptimizationService, matchRecordMapper);
+        verifyNoInteractions(resumeService, resumeOptimizationService, matchService);
     }
 
     /** 出题成功 + 会话落库的最小桩（M12 创建测试共用） */
@@ -449,7 +443,7 @@ class InterviewServiceTest {
         when(resumeService.getResumeById(101L)).thenReturn(resume(101L));
         ResumeOptimization optimization = optimization(301L, 101L, 9L, 201L);
         optimization.setVersionNo(2);
-        when(resumeOptimizationMapper.selectById(301L)).thenReturn(optimization);
+        when(resumeOptimizationService.getOptimizationById(301L)).thenReturn(optimization);
 
         InterviewDetail detail = service.detail(1L, 10L);
 

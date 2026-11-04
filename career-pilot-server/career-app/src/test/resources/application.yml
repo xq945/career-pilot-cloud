@@ -57,6 +57,8 @@ app:
     # 测试环境同样声明：避免 @Scheduled 的占位符在测试上下文里解析为默认值之外的形态
     expiry-cron: 0 0 * * * *
   optimization:
+    # 单测默认装 all；消费者/调度器的角色条件由 WorkerRoleCondition 覆盖
+    role: all
     async:
       # 测试环境关闭异步（走同步执行）：不依赖 Redis，异步分支由
       # OptimizationAsyncProperties 的单测与接口层脚本覆盖。
@@ -68,6 +70,8 @@ app:
       scan-interval: 60s
       max-recovery-count: 3
   match:
+    # 测试走本地 Match/Optimization 实现（不发起远程 Feign 调用）
+    mode: local
     # 本文件在测试 classpath 上**优先于** src/main/resources/application.yml
     # （同名文件只加载一个），因此评分配置必须在测试侧同步声明，
     # 否则 MatchScoringProperties 构造校验会因权重为 0 而失败。

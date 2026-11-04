@@ -2,11 +2,13 @@ package com.careerpilot.service.optimization;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.careerpilot.ai.AiCallResult;
 import com.careerpilot.common.BusinessException;
 import com.careerpilot.dto.MatchDetail;
+import com.careerpilot.dto.OptimizationInputSnapshot;
 import com.careerpilot.dto.ai.ResumeOptimizationAiOutput;
 import com.careerpilot.entity.Job;
 import com.careerpilot.entity.JobAnalysis;
@@ -34,6 +36,7 @@ import com.careerpilot.service.ai.ResumeOptimizationAiService;
  * 校验失败即抛业务异常（由消费者落 FAILED、文案面向用户）。
  */
 @Component
+@ConditionalOnProperty(prefix = "app.match", name = "mode", havingValue = "local", matchIfMissing = true)
 public class OptimizationTaskRunner {
 
     private static final Logger log = LoggerFactory.getLogger(OptimizationTaskRunner.class);
@@ -82,18 +85,36 @@ public class OptimizationTaskRunner {
         if (record == null) {
             throw BusinessException.notFound("优化记录不存在");
         }
-        Resume resume = resumeService.getResumeById(record.getResumeId());
-        Job job = jobService.getJobById(record.getJobId());
-        if (resume == null || job == null) {
-            throw BusinessException.badRequest("简历或岗位已不存在，请重新创建优化");
+        // 阶段 7：优先只读创建时固化的输入快照；旧数据（fast 上线前的任务）回退到远程查询
+        Resume resume;
+        Job job;
+        ResumeAnalysis resumeAnalysis;
+        JobAnalysis jobAnalysis;
+        OptimizationInputSnapshot snapshot = record.getInputSnapshot();
+        if (snapshot != null && snapshot.getResumeAnalysis() != null && snapshot.getJobAnalysis() != null) {
+            if (snapshot.getResumeContent() == null || snapshot.getResumeContent().isBlank()
+                    || snapshot.getJobDescription() == null || snapshot.getJobDescription().isBlank()) {
+                throw BusinessException.badRequest("任务输入不完整，请重新创建优化");
+            }
+            resume = snapshotResume(record, snapshot);
+            job = snapshotJob(record, snapshot);
+            resumeAnalysis = snapshot.getResumeAnalysis();
+            jobAnalysis = snapshot.getJobAnalysis();
         }
-        ResumeAnalysis resumeAnalysis = resumeAnalysisService.findLatestSuccess(resume.getId());
-        if (resumeAnalysis == null) {
-            throw BusinessException.badRequest("简历分析已失效，请重新创建优化");
-        }
-        JobAnalysis jobAnalysis = jobAnalysisService.findLatestSuccess(job.getId());
-        if (jobAnalysis == null || JobAnalysisService.isStale(job.getDescription(), jobAnalysis)) {
-            throw BusinessException.badRequest("岗位分析已失效或已过期，请重新创建优化");
+        else {
+            resume = resumeService.getResumeById(record.getResumeId());
+            job = jobService.getJobById(record.getJobId());
+            if (resume == null || job == null) {
+                throw BusinessException.badRequest("简历或岗位已不存在，请重新创建优化");
+            }
+            resumeAnalysis = resumeAnalysisService.findLatestSuccess(resume.getId());
+            if (resumeAnalysis == null) {
+                throw BusinessException.badRequest("简历分析已失效，请重新创建优化");
+            }
+            jobAnalysis = jobAnalysisService.findLatestSuccess(job.getId());
+            if (jobAnalysis == null || JobAnalysisService.isStale(job.getDescription(), jobAnalysis)) {
+                throw BusinessException.badRequest("岗位分析已失效或已过期，请重新创建优化");
+            }
         }
 
         // ① 匹配：复用 M6 全链路（规则评分 + 模型解释 + 落 match_record），结果作为"优化前评估"
@@ -122,6 +143,24 @@ public class OptimizationTaskRunner {
         if (!completed) {
             log.warn("任务产物未落库（代次已失效）：optimizationId={}", optimizationId);
         }
+    }
+
+    /** 快照 → 精简简历实体（只填匹配/优化所需字段，避免回查简历服务） */
+    private static Resume snapshotResume(ResumeOptimization record, OptimizationInputSnapshot snapshot) {
+        Resume resume = new Resume();
+        resume.setId(record.getResumeId());
+        resume.setUserId(record.getUserId());
+        resume.setContent(snapshot.getResumeContent());
+        return resume;
+    }
+
+    /** 快照 → 精简岗位实体（同上） */
+    private static Job snapshotJob(ResumeOptimization record, OptimizationInputSnapshot snapshot) {
+        Job job = new Job();
+        job.setId(record.getJobId());
+        job.setUserId(record.getUserId());
+        job.setDescription(snapshot.getJobDescription());
+        return job;
     }
 
 }

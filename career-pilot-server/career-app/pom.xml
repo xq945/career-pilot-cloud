@@ -53,6 +53,10 @@
         </dependency>
         <dependency>
             <groupId>com.careerpilot</groupId>
+            <artifactId>career-match-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
             <artifactId>career-domain-interview</artifactId>
         </dependency>
         <dependency>

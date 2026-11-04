@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import com.careerpilot.common.async.AbstractStreamConsumer;
 import com.careerpilot.common.constant.AsyncTaskStreamConstants;
+import com.careerpilot.config.WorkerRoleCondition;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.infrastructure.redis.RedisStreamService;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
@@ -33,6 +35,7 @@ import com.careerpilot.service.optimization.OptimizationStreamProducer.Optimizat
 @Component
 @ConditionalOnProperty(prefix = "app.optimization.async", name = "enabled",
         havingValue = "true", matchIfMissing = true)
+@Conditional(WorkerRoleCondition.class)
 public class OptimizationStreamConsumer extends AbstractStreamConsumer<OptimizationTask> {
 
     /**

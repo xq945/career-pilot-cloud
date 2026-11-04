@@ -45,6 +45,15 @@ public class MatchRecord {
     /** 本次匹配所依据的岗位分析版本 */
     private Long jobAnalysisId;
 
+    /**
+     * 冗余的简历分析版本号（阶段 7 新增）：列表/详情展示不再回查简历服务。
+     * 旧数据为 null，读取时回退到分析服务的批量查询。
+     */
+    private Integer resumeVersionNo;
+
+    /** 冗余的岗位分析版本号（阶段 7 新增；同上） */
+    private Integer jobVersionNo;
+
     /** 0.00–100.00，**由后端规则计算**（《数据库设计》5.6；模型不能覆盖） */
     private BigDecimal matchScore;
 
@@ -113,6 +122,22 @@ public class MatchRecord {
 
     public void setJobAnalysisId(Long jobAnalysisId) {
         this.jobAnalysisId = jobAnalysisId;
+    }
+
+    public Integer getResumeVersionNo() {
+        return resumeVersionNo;
+    }
+
+    public void setResumeVersionNo(Integer resumeVersionNo) {
+        this.resumeVersionNo = resumeVersionNo;
+    }
+
+    public Integer getJobVersionNo() {
+        return jobVersionNo;
+    }
+
+    public void setJobVersionNo(Integer jobVersionNo) {
+        this.jobVersionNo = jobVersionNo;
     }
 
     public BigDecimal getMatchScore() {

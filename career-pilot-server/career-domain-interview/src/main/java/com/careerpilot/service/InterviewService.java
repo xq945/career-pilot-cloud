@@ -44,8 +44,6 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 import com.careerpilot.service.ai.InterviewSummaryFallback;
 
@@ -99,9 +97,7 @@ public class InterviewService {
 
     private final ResumeOptimizationService resumeOptimizationService;
 
-    private final MatchRecordMapper matchRecordMapper;
-
-    private final ResumeOptimizationMapper resumeOptimizationMapper;
+    private final MatchService matchService;
 
     public InterviewService(InterviewSessionMapper interviewSessionMapper,
                             InterviewQuestionMapper interviewQuestionMapper,
@@ -112,8 +108,7 @@ public class InterviewService {
                             InterviewSummaryFallback interviewSummaryFallback,
                             ResumeService resumeService,
                             ResumeOptimizationService resumeOptimizationService,
-                            MatchRecordMapper matchRecordMapper,
-                            ResumeOptimizationMapper resumeOptimizationMapper) {
+                            MatchService matchService) {
         this.interviewSessionMapper = interviewSessionMapper;
         this.interviewQuestionMapper = interviewQuestionMapper;
         this.jobService = jobService;
@@ -123,8 +118,7 @@ public class InterviewService {
         this.interviewSummaryFallback = interviewSummaryFallback;
         this.resumeService = resumeService;
         this.resumeOptimizationService = resumeOptimizationService;
-        this.matchRecordMapper = matchRecordMapper;
-        this.resumeOptimizationMapper = resumeOptimizationMapper;
+        this.matchService = matchService;
     }
 
     // ---------------------------------------------------------------- 创建会话（§7.1）
@@ -216,7 +210,9 @@ public class InterviewService {
                     && !request.getResumeId().equals(optimization.getResumeId())) {
                 throw BusinessException.badRequest("所选简历与优化记录不一致");
             }
-            MatchRecord match = matchRecordMapper.selectById(optimization.getMatchRecordId());
+            MatchRecord match = optimization.getMatchRecordId() == null
+                    ? null
+                    : matchService.getOwnedMatch(userId, optimization.getMatchRecordId());
             return new CreateContext(optimization.getResumeId(), optimization.getId(),
                     ResumeOptimizationService.currentContent(optimization), gapItems(match));
         }
@@ -232,13 +228,7 @@ public class InterviewService {
 
     /** 「简历 × 岗位」的最近一条匹配记录（无则 null）；仅用于能力差距块，不影响出题成败 */
     private MatchRecord latestMatch(Long userId, Long resumeId, Long jobId) {
-        return matchRecordMapper.selectOne(Wrappers.<MatchRecord>lambdaQuery()
-                .eq(MatchRecord::getUserId, userId)
-                .eq(MatchRecord::getResumeId, resumeId)
-                .eq(MatchRecord::getJobId, jobId)
-                .orderByDesc(MatchRecord::getCreatedAt)
-                .orderByDesc(MatchRecord::getId)
-                .last("LIMIT 1"));
+        return matchService.latestMatch(userId, resumeId, jobId);
     }
 
     /**
@@ -609,9 +599,7 @@ public class InterviewService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return resumeOptimizationMapper.selectList(Wrappers.<ResumeOptimization>lambdaQuery()
-                        .select(ResumeOptimization::getId, ResumeOptimization::getVersionNo)
-                        .in(ResumeOptimization::getId, ids))
+        return resumeOptimizationService.listOptimizationsByIds(ids)
                 .stream().collect(Collectors.toMap(ResumeOptimization::getId, Function.identity()));
     }
 
@@ -622,7 +610,7 @@ public class InterviewService {
 
     /** 来源优化记录单条查询（可空入参 → null） */
     private ResumeOptimization findSourceOptimization(Long optimizationId) {
-        return optimizationId == null ? null : resumeOptimizationMapper.selectById(optimizationId);
+        return optimizationId == null ? null : resumeOptimizationService.getOptimizationById(optimizationId);
     }
 
     /**

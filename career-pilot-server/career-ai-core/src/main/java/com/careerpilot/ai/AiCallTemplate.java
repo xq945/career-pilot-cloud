@@ -129,6 +129,11 @@ public class AiCallTemplate {
         long startNanos = System.nanoTime();
         RuntimeException lastError = null;
         Long userId = CurrentUser.idOrNull();
+        BeanOutputConverter<T> converter = new BeanOutputConverter<>(outputType);
+        // 与本地模式对齐：Spring AI 在 .responseEntity(converter) 时会把格式指令注入提示词，
+        // 但 remote 模式只把 system/user 两段文本交给 career-ai——若不在这里显式追加，
+        // 模型拿不到 JSON Schema/格式约束，输出更容易出现字段漂移与事实违规（阶段 7 修复）。
+        String userPromptWithFormat = userPrompt + "\n\n" + converter.getFormat();
         for (int attempt = 1; attempt <= structuredMaxAttempts; attempt++) {
             String attemptSystemPrompt = attempt == 1
                     ? systemPrompt
@@ -139,12 +144,11 @@ public class AiCallTemplate {
             }
             try {
                 AiChatResponse response = aiChatClient.chat(new AiChatRequest(
-                        scene, userId, providerKey, attemptSystemPrompt, userPrompt));
+                        scene, userId, providerKey, attemptSystemPrompt, userPromptWithFormat));
                 if (response == null || response.content() == null || response.content().isBlank()) {
                     log.warn("AI 输出为空（remote）：scene={}", scene);
                     throw BusinessException.aiInvalidOutput(UNPARSABLE_MESSAGE);
                 }
-                BeanOutputConverter<T> converter = new BeanOutputConverter<>(outputType);
                 T value = new RepairingStructuredOutputConverter<>(converter, scene, log)
                         .convert(response.content());
                 if (value == null) {
