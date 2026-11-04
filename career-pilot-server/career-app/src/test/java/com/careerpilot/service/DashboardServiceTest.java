@@ -35,11 +35,7 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
@@ -58,10 +54,10 @@ class DashboardServiceTest {
     private static final Long USER_ID = 7L;
 
     @Mock
-    private ResumeMapper resumeMapper;
+    private ResumeService resumeService;
 
     @Mock
-    private ResumeAnalysisMapper resumeAnalysisMapper;
+    private ResumeAnalysisService resumeAnalysisService;
 
     @Mock
     private JobService jobService;
@@ -85,7 +81,6 @@ class DashboardServiceTest {
 
     @Test
     void summary_emptyAccount_zeroCountsAndNullBoundaries() {
-        when(resumeMapper.selectList(any())).thenReturn(List.of());
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
@@ -105,20 +100,17 @@ class DashboardServiceTest {
         assertTrue(summary.getRecentTasks().isEmpty());
         assertTrue(summary.getRecentMatches().isEmpty());
         assertTrue(summary.getTopGaps().isEmpty());
-        // 空集合先短路：不对分析表发 IN 查询
-        verify(resumeAnalysisMapper, never()).selectList(any());
+        // 空集合先短路：不向简历服务查最近分析
+        verify(resumeAnalysisService, never()).recentAnalyses(any(), anyInt());
         verify(jobAnalysisService, never()).recentAnalyses(any(), anyInt());
     }
 
     // ---------------------------------------------------------------- 简历 / 岗位计数口径
 
     @Test
-    void summary_resumeAnalyzedCount_dedupesMultipleVersions() {
-        when(resumeMapper.selectList(any())).thenReturn(List.of(
-                resume(11L, "A"), resume(12L, "B"), resume(13L, "C")));
-        // 11 号有两个版本的成功分析（只算一份简历），12 号一个，13 号没有
-        when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(
-                resumeAnalysis(11L), resumeAnalysis(11L), resumeAnalysis(12L)));
+    void summary_resumeAnalyzedCount_comesFromResumeService() {
+        // 口径（去重后的有效简历 ∩ 有成功分析）由简历服务实现，仪表盘只取数
+        when(resumeAnalysisService.countAnalyzedResumes(USER_ID)).thenReturn(2L);
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
@@ -182,7 +174,7 @@ class DashboardServiceTest {
         // 源资源已逻辑删除：关联查询不过滤 status，名称仍须显示（同 6.2 的可见性规则）
         Resume deletedResume = resume(11L, "Java后端简历");
         deletedResume.setStatus(Resume.STATUS_DELETED);
-        when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
+        when(resumeService.listResumesByIds(any())).thenReturn(List.of(deletedResume));
         Job deletedJob = job(21L, "Java后端开发实习生", "描述");
         deletedJob.setCompanyName("示例科技");
         deletedJob.setStatus(Job.STATUS_DELETED);
@@ -274,9 +266,11 @@ class DashboardServiceTest {
 
     @Test
     void summary_recentTasks_mergesFourKindsInTimeOrderAndCapsAtSix() {
-        when(resumeMapper.selectList(any())).thenReturn(List.of(
+        when(resumeService.listOwnedResumes(USER_ID)).thenReturn(List.of(
                 resume(11L, "简历A"), resume(12L, "简历B")));
-        when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(
+        when(resumeService.listResumesByIds(any())).thenReturn(List.of(
+                resume(11L, "简历A"), resume(12L, "简历B")));
+        when(resumeAnalysisService.recentAnalyses(eq(USER_ID), anyInt())).thenReturn(List.of(
                 resumeAnalysisAt(11L, "2026-10-14T10:00:05"),
                 resumeAnalysisAt(12L, "2026-10-14T10:00:04")));
         when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(job(21L, "岗位A", "描述A")));
@@ -309,14 +303,14 @@ class DashboardServiceTest {
     void summary_recentTasks_noActiveResume_shortCircuitsAnalysisQueries() {
         // 无有效简历（含全部已删的情形——wrapper 的 status 过滤由真库执行，见接口层脚本）：
         // 分析查询整体短路，任务线为空
-        when(resumeMapper.selectList(any())).thenReturn(List.of());
+        when(resumeService.listOwnedResumes(USER_ID)).thenReturn(List.of());
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
         assertTrue(summary.getRecentTasks().isEmpty());
-        // 有效简历为空 → 不对分析表发 IN 查询（空集合先短路）
-        verify(resumeAnalysisMapper, never()).selectList(any());
+        // 有效简历为空 → 不向简历服务查最近分析（空集合先短路）
+        verify(resumeAnalysisService, never()).recentAnalyses(any(), anyInt());
     }
 
     @Test
@@ -326,7 +320,7 @@ class DashboardServiceTest {
         deletedResume.setStatus(Resume.STATUS_DELETED);
         Job deletedJob = job(21L, "已删岗位", "描述");
         deletedJob.setStatus(Job.STATUS_DELETED);
-        when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
+        when(resumeService.listResumesByIds(any())).thenReturn(List.of(deletedResume));
         when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(deletedJob));
         when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
         when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(

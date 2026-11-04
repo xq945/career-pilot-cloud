@@ -7,7 +7,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -29,11 +28,7 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 
 /**
@@ -79,9 +74,9 @@ public class DashboardService {
 
     private static final String GAP_TYPE_PARTIAL = "PARTIAL";
 
-    private final ResumeMapper resumeMapper;
+    private final ResumeService resumeService;
 
-    private final ResumeAnalysisMapper resumeAnalysisMapper;
+    private final ResumeAnalysisService resumeAnalysisService;
 
     private final JobService jobService;
 
@@ -93,12 +88,12 @@ public class DashboardService {
 
     private final ResumeOptimizationMapper resumeOptimizationMapper;
 
-    public DashboardService(ResumeMapper resumeMapper, ResumeAnalysisMapper resumeAnalysisMapper,
+    public DashboardService(ResumeService resumeService, ResumeAnalysisService resumeAnalysisService,
                             JobService jobService, JobAnalysisService jobAnalysisService,
                             MatchRecordMapper matchRecordMapper, InterviewSessionMapper interviewSessionMapper,
                             ResumeOptimizationMapper resumeOptimizationMapper) {
-        this.resumeMapper = resumeMapper;
-        this.resumeAnalysisMapper = resumeAnalysisMapper;
+        this.resumeService = resumeService;
+        this.resumeAnalysisService = resumeAnalysisService;
         this.jobService = jobService;
         this.jobAnalysisService = jobAnalysisService;
         this.matchRecordMapper = matchRecordMapper;
@@ -109,9 +104,7 @@ public class DashboardService {
     /** 汇总（9.1）：12 个字段一次装配返回 */
     public DashboardSummary summary(Long userId) {
         DashboardSummary summary = new DashboardSummary();
-        summary.setResumeCount(countOf(resumeMapper.selectCount(Wrappers.<Resume>lambdaQuery()
-                .eq(Resume::getUserId, userId)
-                .eq(Resume::getStatus, Resume.STATUS_ACTIVE))));
+        summary.setResumeCount((int) resumeService.countOwnedResumes(userId));
         summary.setResumeAnalyzedCount(resumeAnalyzedCount(userId));
         summary.setJobCount((int) jobService.countOwnedJobs(userId));
         JobCounts jobCounts = jobCounts(userId);
@@ -141,24 +134,12 @@ public class DashboardService {
     /**
      * 已有成功分析的**有效简历**数（9.1 口径：有效简历 ∩ 有成功分析，去重）。
      *
-     * <p>不能直接数 resume_analysis 行——该表没有 user_id 列，且同一简历可能有多版本分析；
-     * 故先取本人有效简历 id，再取其成功分析的**去重 resume_id** 计数。
+     * <p>阶段 6b 起口径下沉到简历服务（{@code countAnalyzedResumes}）：不能直接数
+     * resume_analysis 行——该表没有 user_id 列，且同一简历可能有多版本分析，
+     * 需先取本人有效简历再按 resume_id 去重。
      */
     private int resumeAnalyzedCount(Long userId) {
-        List<Long> resumeIds = resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId)
-                        .eq(Resume::getUserId, userId)
-                        .eq(Resume::getStatus, Resume.STATUS_ACTIVE))
-                .stream().map(Resume::getId).toList();
-        if (resumeIds.isEmpty()) {
-            return 0;
-        }
-        Set<Long> analyzedResumeIds = resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
-                        .select(ResumeAnalysis::getResumeId)
-                        .in(ResumeAnalysis::getResumeId, resumeIds)
-                        .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS))
-                .stream().map(ResumeAnalysis::getResumeId).collect(Collectors.toSet());
-        return analyzedResumeIds.size();
+        return (int) resumeAnalysisService.countAnalyzedResumes(userId);
     }
 
     /** 岗位的 analyzed / stale 计数：由岗位分析服务按同一口径计算。 */
@@ -266,22 +247,14 @@ public class DashboardService {
 
     /** 简历分析任务：本人有效简历的最近成功分析（标题 = 简历名） */
     private void appendResumeAnalysisTasks(List<DashboardRecentTask> tasks, Long userId) {
-        List<Resume> resumes = resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                .select(Resume::getId, Resume::getName)
-                .eq(Resume::getUserId, userId)
-                .eq(Resume::getStatus, Resume.STATUS_ACTIVE));
+        List<Resume> resumes = resumeService.listOwnedResumes(userId);
         if (resumes.isEmpty()) {
             return;
         }
         Map<Long, String> nameById = resumes.stream()
                 .collect(Collectors.toMap(Resume::getId, Resume::getName));
-        List<ResumeAnalysis> analyses = resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
-                .select(ResumeAnalysis::getResumeId, ResumeAnalysis::getCreatedAt)
-                .in(ResumeAnalysis::getResumeId, nameById.keySet())
-                .eq(ResumeAnalysis::getStatus, ResumeAnalysis.STATUS_SUCCESS)
-                .orderByDesc(ResumeAnalysis::getCreatedAt)
-                .orderByDesc(ResumeAnalysis::getId)
-                .last("LIMIT " + RECENT_TASK_PER_KIND));
+        // recentAnalyses 的口径与拆分前一致：本人有效简历的成功分析、created_at 倒序、取前 N 条
+        List<ResumeAnalysis> analyses = resumeAnalysisService.recentAnalyses(userId, RECENT_TASK_PER_KIND);
         for (ResumeAnalysis analysis : analyses) {
             tasks.add(task(TASK_TYPE_RESUME_ANALYSIS, nameById.get(analysis.getResumeId()),
                     analysis.getResumeId(), analysis.getCreatedAt()));
@@ -351,9 +324,7 @@ public class DashboardService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId, Resume::getName)
-                        .in(Resume::getId, ids))
+        return resumeService.listResumesByIds(List.copyOf(ids))
                 .stream().collect(Collectors.toMap(Resume::getId, Resume::getName));
     }
 
@@ -382,9 +353,7 @@ public class DashboardService {
     /** 当页记录关联的简历（**不过滤 status**：源资源逻辑删除后名称仍要显示，同 6.2） */
     private Map<Long, Resume> resumesByIds(List<MatchRecord> records) {
         List<Long> ids = records.stream().map(MatchRecord::getResumeId).distinct().toList();
-        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId, Resume::getName)
-                        .in(Resume::getId, ids))
+        return resumeService.listResumesByIds(ids)
                 .stream().collect(Collectors.toMap(Resume::getId, Function.identity()));
     }
 

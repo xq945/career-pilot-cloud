@@ -44,10 +44,7 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 import com.careerpilot.service.ai.InterviewSummaryFallback;
@@ -86,10 +83,6 @@ public class InterviewService {
 
     private final InterviewQuestionMapper interviewQuestionMapper;
 
-    private final JobMapper jobMapper;
-
-    private final JobAnalysisMapper jobAnalysisMapper;
-
     private final JobService jobService;
 
     private final JobAnalysisService jobAnalysisService;
@@ -108,14 +101,10 @@ public class InterviewService {
 
     private final MatchRecordMapper matchRecordMapper;
 
-    private final ResumeMapper resumeMapper;
-
     private final ResumeOptimizationMapper resumeOptimizationMapper;
 
     public InterviewService(InterviewSessionMapper interviewSessionMapper,
                             InterviewQuestionMapper interviewQuestionMapper,
-                            JobMapper jobMapper,
-                            JobAnalysisMapper jobAnalysisMapper,
                             JobService jobService,
                             JobAnalysisService jobAnalysisService,
                             InterviewAiService interviewAiService,
@@ -124,12 +113,9 @@ public class InterviewService {
                             ResumeService resumeService,
                             ResumeOptimizationService resumeOptimizationService,
                             MatchRecordMapper matchRecordMapper,
-                            ResumeMapper resumeMapper,
                             ResumeOptimizationMapper resumeOptimizationMapper) {
         this.interviewSessionMapper = interviewSessionMapper;
         this.interviewQuestionMapper = interviewQuestionMapper;
-        this.jobMapper = jobMapper;
-        this.jobAnalysisMapper = jobAnalysisMapper;
         this.jobService = jobService;
         this.jobAnalysisService = jobAnalysisService;
         this.interviewAiService = interviewAiService;
@@ -138,7 +124,6 @@ public class InterviewService {
         this.resumeService = resumeService;
         this.resumeOptimizationService = resumeOptimizationService;
         this.matchRecordMapper = matchRecordMapper;
-        this.resumeMapper = resumeMapper;
         this.resumeOptimizationMapper = resumeOptimizationMapper;
     }
 
@@ -610,9 +595,7 @@ public class InterviewService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId, Resume::getName)
-                        .in(Resume::getId, ids))
+        return resumeService.listResumesByIds(ids)
                 .stream().collect(Collectors.toMap(Resume::getId, Function.identity()));
     }
 
@@ -634,7 +617,7 @@ public class InterviewService {
 
     /** 来源简历单条查询（可空入参 → null），**不过滤 status**（同 {@link #findResumesByIds}） */
     private Resume findSourceResume(Long resumeId) {
-        return resumeId == null ? null : resumeMapper.selectById(resumeId);
+        return resumeId == null ? null : resumeService.getResumeById(resumeId);
     }
 
     /** 来源优化记录单条查询（可空入参 → null） */

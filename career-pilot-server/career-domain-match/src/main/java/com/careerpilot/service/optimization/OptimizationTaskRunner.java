@@ -14,13 +14,13 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.service.JobService;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.JobAnalysisService;
 import com.careerpilot.service.MatchScoringResult;
 import com.careerpilot.service.MatchScoringService;
 import com.careerpilot.service.MatchService;
 import com.careerpilot.service.ResumeAnalysisService;
+import com.careerpilot.service.ResumeService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
 
 /**
@@ -40,7 +40,7 @@ public class OptimizationTaskRunner {
 
     private final ResumeOptimizationMapper optimizationMapper;
 
-    private final ResumeMapper resumeMapper;
+    private final ResumeService resumeService;
 
     private final JobService jobService;
 
@@ -56,14 +56,14 @@ public class OptimizationTaskRunner {
 
     private final OptimizationTaskStateService stateService;
 
-    public OptimizationTaskRunner(ResumeOptimizationMapper optimizationMapper, ResumeMapper resumeMapper,
+    public OptimizationTaskRunner(ResumeOptimizationMapper optimizationMapper, ResumeService resumeService,
                                   JobService jobService, ResumeAnalysisService resumeAnalysisService,
                                   JobAnalysisService jobAnalysisService, MatchService matchService,
                                   MatchScoringService matchScoringService,
                                   ResumeOptimizationAiService resumeOptimizationAiService,
                                   OptimizationTaskStateService stateService) {
         this.optimizationMapper = optimizationMapper;
-        this.resumeMapper = resumeMapper;
+        this.resumeService = resumeService;
         this.jobService = jobService;
         this.resumeAnalysisService = resumeAnalysisService;
         this.jobAnalysisService = jobAnalysisService;
@@ -82,7 +82,7 @@ public class OptimizationTaskRunner {
         if (record == null) {
             throw BusinessException.notFound("优化记录不存在");
         }
-        Resume resume = resumeMapper.selectById(record.getResumeId());
+        Resume resume = resumeService.getResumeById(record.getResumeId());
         Job job = jobService.getJobById(record.getJobId());
         if (resume == null || job == null) {
             throw BusinessException.badRequest("简历或岗位已不存在，请重新创建优化");

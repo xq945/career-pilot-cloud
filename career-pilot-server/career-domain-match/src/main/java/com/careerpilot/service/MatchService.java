@@ -26,11 +26,7 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.service.ai.MatchAiService;
 
 /**
@@ -56,14 +52,6 @@ public class MatchService {
 
     private final MatchRecordMapper matchRecordMapper;
 
-    private final ResumeMapper resumeMapper;
-
-    private final JobMapper jobMapper;
-
-    private final ResumeAnalysisMapper resumeAnalysisMapper;
-
-    private final JobAnalysisMapper jobAnalysisMapper;
-
     private final ResumeService resumeService;
 
     private final JobService jobService;
@@ -76,16 +64,11 @@ public class MatchService {
 
     private final MatchAiService matchAiService;
 
-    public MatchService(MatchRecordMapper matchRecordMapper, ResumeMapper resumeMapper, JobMapper jobMapper,
-                        ResumeAnalysisMapper resumeAnalysisMapper, JobAnalysisMapper jobAnalysisMapper,
+    public MatchService(MatchRecordMapper matchRecordMapper,
                         ResumeService resumeService, JobService jobService,
                         ResumeAnalysisService resumeAnalysisService, JobAnalysisService jobAnalysisService,
                         MatchScoringService matchScoringService, MatchAiService matchAiService) {
         this.matchRecordMapper = matchRecordMapper;
-        this.resumeMapper = resumeMapper;
-        this.jobMapper = jobMapper;
-        this.resumeAnalysisMapper = resumeAnalysisMapper;
-        this.jobAnalysisMapper = jobAnalysisMapper;
         this.resumeService = resumeService;
         this.jobService = jobService;
         this.resumeAnalysisService = resumeAnalysisService;
@@ -196,10 +179,10 @@ public class MatchService {
         if (record == null) {
             throw BusinessException.notFound("匹配记录不存在");
         }
-        // 外键为 ON DELETE RESTRICT，且源资源与分析行只做逻辑删除/不删除——这些行必然存在
-        Resume resume = resumeMapper.selectById(record.getResumeId());
+        // 源资源与分析行只做逻辑删除/不删除——这些行必然存在（阶段 6b：改由简历服务提供）
+        Resume resume = resumeService.getResumeById(record.getResumeId());
         Job job = jobService.getJobById(record.getJobId());
-        ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(record.getResumeAnalysisId());
+        ResumeAnalysis resumeAnalysis = resumeAnalysisService.getAnalysisById(record.getResumeAnalysisId());
         JobAnalysis jobAnalysis = jobAnalysisService.getAnalysisById(record.getJobAnalysisId());
         return toDetail(record, resume.getName(), resumeAnalysis.getVersionNo(),
                 job.getJobName(), job.getCompanyName(), jobAnalysis.getVersionNo());
@@ -216,9 +199,7 @@ public class MatchService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId, Resume::getName)
-                        .in(Resume::getId, ids))
+        return resumeService.listResumesByIds(ids)
                 .stream().collect(Collectors.toMap(Resume::getId, Function.identity()));
     }
 
@@ -239,9 +220,7 @@ public class MatchService {
             return Map.of();
         }
         Map<Long, Integer> versions = new HashMap<>();
-        for (ResumeAnalysis analysis : resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
-                .select(ResumeAnalysis::getId, ResumeAnalysis::getVersionNo)
-                .in(ResumeAnalysis::getId, ids))) {
+        for (ResumeAnalysis analysis : resumeAnalysisService.getAnalysesByIds(ids)) {
             versions.put(analysis.getId(), analysis.getVersionNo());
         }
         return versions;

@@ -48,10 +48,7 @@ import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.mapper.InterviewQuestionMapper;
 import com.careerpilot.mapper.InterviewSessionMapper;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.InterviewAiService;
 import com.careerpilot.service.ai.InterviewSummaryFallback;
@@ -65,8 +62,6 @@ class InterviewServiceTest {
     private InterviewSessionMapper sessionMapper;
 
     private InterviewQuestionMapper questionMapper;
-
-    private JobMapper jobMapper;
 
     private JobService jobService;
 
@@ -82,8 +77,6 @@ class InterviewServiceTest {
 
     private MatchRecordMapper matchRecordMapper;
 
-    private ResumeMapper resumeMapper;
-
     private ResumeOptimizationMapper resumeOptimizationMapper;
 
     private InterviewService service;
@@ -92,7 +85,6 @@ class InterviewServiceTest {
     void setUp() {
         sessionMapper = mock(InterviewSessionMapper.class);
         questionMapper = mock(InterviewQuestionMapper.class);
-        jobMapper = mock(JobMapper.class);
         jobService = mock(JobService.class);
         aiService = mock(InterviewAiService.class);
         txService = mock(InterviewTxService.class);
@@ -100,13 +92,12 @@ class InterviewServiceTest {
         resumeService = mock(ResumeService.class);
         resumeOptimizationService = mock(ResumeOptimizationService.class);
         matchRecordMapper = mock(MatchRecordMapper.class);
-        resumeMapper = mock(ResumeMapper.class);
         resumeOptimizationMapper = mock(ResumeOptimizationMapper.class);
-        service = new InterviewService(sessionMapper, questionMapper, jobMapper,
-                mock(JobAnalysisMapper.class), jobService, mock(JobAnalysisService.class),
+        service = new InterviewService(sessionMapper, questionMapper,
+                jobService, mock(JobAnalysisService.class),
                 aiService, txService, summaryFallback,
                 resumeService, resumeOptimizationService, matchRecordMapper,
-                resumeMapper, resumeOptimizationMapper);
+                resumeOptimizationMapper);
         // M15：历史题去重查询的宽松桩（不走创建路径的用例不受影响）
         lenient().when(sessionMapper.selectList(any())).thenReturn(List.of());
     }
@@ -455,7 +446,7 @@ class InterviewServiceTest {
         session.setOptimizationId(301L);
         when(sessionMapper.selectOne(any())).thenReturn(session);
         when(questionMapper.selectList(any())).thenReturn(List.of());
-        when(resumeMapper.selectById(101L)).thenReturn(resume(101L));
+        when(resumeService.getResumeById(101L)).thenReturn(resume(101L));
         ResumeOptimization optimization = optimization(301L, 101L, 9L, 201L);
         optimization.setVersionNo(2);
         when(resumeOptimizationMapper.selectById(301L)).thenReturn(optimization);

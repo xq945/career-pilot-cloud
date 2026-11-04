@@ -53,11 +53,7 @@ import com.careerpilot.entity.ResumeOptimization;
 import com.careerpilot.service.optimization.OptimizationStreamProducer;
 import com.careerpilot.service.optimization.OptimizationTaskRunner;
 import com.careerpilot.service.optimization.OptimizationTaskStateService;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.ResumeAiService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
@@ -84,18 +80,6 @@ class ResumeOptimizationServiceTest {
 
     @Mock
     private MatchRecordMapper matchRecordMapper;
-
-    @Mock
-    private ResumeMapper resumeMapper;
-
-    @Mock
-    private JobMapper jobMapper;
-
-    @Mock
-    private ResumeAnalysisMapper resumeAnalysisMapper;
-
-    @Mock
-    private JobAnalysisMapper jobAnalysisMapper;
 
     @Mock
     private ResumeService resumeService;
@@ -141,8 +125,8 @@ class ResumeOptimizationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResumeOptimizationService(optimizationMapper, matchRecordMapper, resumeMapper, jobMapper,
-                resumeAnalysisMapper, jobAnalysisMapper, resumeService, jobService, resumeAnalysisService,
+        service = new ResumeOptimizationService(optimizationMapper, matchRecordMapper,
+                resumeService, jobService, resumeAnalysisService,
                 jobAnalysisService, matchService, matchScoringService, resumeOptimizationAiService, resumeAiService,
                 taskRunner, stateService, streamProducerProvider);
     }
@@ -484,7 +468,7 @@ class ResumeOptimizationServiceTest {
         ResumeOptimization record = storedRecord();
         record.setEditedContent("用户最终稿");
         when(optimizationMapper.selectOne(any())).thenReturn(record);
-        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
+        when(resumeService.getResumeById(RESUME_ID)).thenReturn(resume());
         when(jobService.getJobById(JOB_ID)).thenReturn(job());
 
         OptimizedResumeFile file = service.readExport(USER_ID, 301L);
@@ -530,7 +514,7 @@ class ResumeOptimizationServiceTest {
             page.setTotal(records.size());
             return page;
         });
-        when(resumeMapper.selectList(any())).thenReturn(List.of(resume()));
+        when(resumeService.listResumesByIds(any())).thenReturn(List.of(resume()));
         when(jobService.listJobsByIds(any())).thenReturn(List.of(job()));
         if (!matches.isEmpty()) {
             when(matchRecordMapper.selectList(any())).thenReturn(matches);
@@ -582,7 +566,7 @@ class ResumeOptimizationServiceTest {
         }).when(optimizationMapper).insert(any(ResumeOptimization.class));
         // M16：任务行回读 + 未完成态的详情来源查询（resume/job）
         when(optimizationMapper.selectById(301L)).thenAnswer(invocation -> insertedRecord);
-        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
+        when(resumeService.getResumeById(RESUME_ID)).thenReturn(resume());
         when(jobService.getJobById(JOB_ID)).thenReturn(job());
     }
 
@@ -590,8 +574,8 @@ class ResumeOptimizationServiceTest {
     private void stubDetailDependencies(ResumeOptimization ignored) {
         when(matchRecordMapper.selectById(501L)).thenReturn(matchRecord());
         when(jobAnalysisService.getAnalysisById(11L)).thenReturn(jobAnalysis());
-        when(resumeAnalysisMapper.selectById(21L)).thenReturn(resumeAnalysis());
-        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
+        when(resumeAnalysisService.getAnalysisById(21L)).thenReturn(resumeAnalysis());
+        when(resumeService.getResumeById(RESUME_ID)).thenReturn(resume());
         when(jobService.getJobById(JOB_ID)).thenReturn(job());
     }
 

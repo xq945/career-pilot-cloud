@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -42,11 +43,7 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.service.ai.MatchAiService;
 
 /**
@@ -68,18 +65,6 @@ class MatchServiceTest {
 
     @Mock
     private MatchRecordMapper matchRecordMapper;
-
-    @Mock
-    private ResumeMapper resumeMapper;
-
-    @Mock
-    private JobMapper jobMapper;
-
-    @Mock
-    private ResumeAnalysisMapper resumeAnalysisMapper;
-
-    @Mock
-    private JobAnalysisMapper jobAnalysisMapper;
 
     @Mock
     private ResumeService resumeService;
@@ -267,9 +252,9 @@ class MatchServiceTest {
         deletedResume.setStatus(Resume.STATUS_DELETED);
         Job deletedJob = job();
         deletedJob.setStatus(Job.STATUS_DELETED);
-        when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
+        when(resumeService.listResumesByIds(anyList())).thenReturn(List.of(deletedResume));
         when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
-        when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(resumeAnalysis()));
+        when(resumeAnalysisService.getAnalysesByIds(anyList())).thenReturn(List.of(resumeAnalysis()));
         when(jobAnalysisService.getAnalysesByIds(any())).thenReturn(List.of(jobAnalysis("hash")));
 
         PageResult<MatchView> result = matchService.list(USER_ID, new PageQuery());

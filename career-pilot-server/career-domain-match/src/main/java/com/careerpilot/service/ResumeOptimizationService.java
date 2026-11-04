@@ -40,11 +40,7 @@ import com.careerpilot.entity.MatchRecord;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
-import com.careerpilot.mapper.JobAnalysisMapper;
-import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.MatchRecordMapper;
-import com.careerpilot.mapper.ResumeAnalysisMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.ai.ResumeAiService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
@@ -89,14 +85,6 @@ public class ResumeOptimizationService {
 
     private final MatchRecordMapper matchRecordMapper;
 
-    private final ResumeMapper resumeMapper;
-
-    private final JobMapper jobMapper;
-
-    private final ResumeAnalysisMapper resumeAnalysisMapper;
-
-    private final JobAnalysisMapper jobAnalysisMapper;
-
     private final ResumeService resumeService;
 
     private final JobService jobService;
@@ -123,9 +111,7 @@ public class ResumeOptimizationService {
     private final ObjectProvider<OptimizationStreamProducer> streamProducerProvider;
 
     public ResumeOptimizationService(ResumeOptimizationMapper optimizationMapper,
-                                     MatchRecordMapper matchRecordMapper, ResumeMapper resumeMapper,
-                                     JobMapper jobMapper, ResumeAnalysisMapper resumeAnalysisMapper,
-                                     JobAnalysisMapper jobAnalysisMapper,
+                                     MatchRecordMapper matchRecordMapper,
                                      ResumeService resumeService, JobService jobService,
                                      ResumeAnalysisService resumeAnalysisService,
                                      JobAnalysisService jobAnalysisService,
@@ -137,10 +123,6 @@ public class ResumeOptimizationService {
                                      ObjectProvider<OptimizationStreamProducer> streamProducerProvider) {
         this.optimizationMapper = optimizationMapper;
         this.matchRecordMapper = matchRecordMapper;
-        this.resumeMapper = resumeMapper;
-        this.jobMapper = jobMapper;
-        this.resumeAnalysisMapper = resumeAnalysisMapper;
-        this.jobAnalysisMapper = jobAnalysisMapper;
         this.resumeService = resumeService;
         this.jobService = jobService;
         this.resumeAnalysisService = resumeAnalysisService;
@@ -424,7 +406,7 @@ public class ResumeOptimizationService {
     public OptimizedResumeFile readExport(Long userId, Long id) {
         ResumeOptimization record = getOwned(userId, id);
         requireSuccess(record, "导出");
-        Resume resume = resumeMapper.selectById(record.getResumeId());
+        Resume resume = resumeService.getResumeById(record.getResumeId());
         Job job = jobService.getJobById(record.getJobId());
         String fileName = safeFileName((resume == null ? "简历" : resume.getName())
                 + "-" + (job == null ? "岗位" : job.getJobName()) + "-优化稿");
@@ -471,9 +453,7 @@ public class ResumeOptimizationService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return resumeMapper.selectList(Wrappers.<Resume>lambdaQuery()
-                        .select(Resume::getId, Resume::getName)
-                        .in(Resume::getId, ids))
+        return resumeService.listResumesByIds(ids)
                 .stream().collect(Collectors.toMap(Resume::getId, Function.identity()));
     }
 
@@ -516,7 +496,7 @@ public class ResumeOptimizationService {
      * （前端按状态渲染进度或失败态）。
      */
     private ResumeOptimizationDetail toDetail(ResumeOptimization record) {
-        Resume resume = resumeMapper.selectById(record.getResumeId());
+        Resume resume = resumeService.getResumeById(record.getResumeId());
         Job job = jobService.getJobById(record.getJobId());
         if (resume == null || job == null) {
             // 外键 RESTRICT + 逻辑删除保证两行存在；此分支仅为防御
@@ -548,7 +528,7 @@ public class ResumeOptimizationService {
         // 以下装配同既有实现（外键 RESTRICT 保证引用的分析行存在）
         MatchRecord matchRecord = matchRecordMapper.selectById(record.getMatchRecordId());
         JobAnalysis jobAnalysis = jobAnalysisService.getAnalysisById(matchRecord.getJobAnalysisId());
-        ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(matchRecord.getResumeAnalysisId());
+        ResumeAnalysis resumeAnalysis = resumeAnalysisService.getAnalysisById(matchRecord.getResumeAnalysisId());
         detail.setResumeVersionNo(resumeAnalysis.getVersionNo());
         detail.setJobVersionNo(jobAnalysis.getVersionNo());
         detail.setMatchId(record.getMatchRecordId());

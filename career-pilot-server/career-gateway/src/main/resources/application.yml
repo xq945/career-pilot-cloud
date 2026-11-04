@@ -31,6 +31,10 @@ spring:
               uri: lb://career-job
               predicates:
                 - Path=/api/jobs,/api/jobs/**
+            - id: career-resume
+              uri: lb://career-resume
+              predicates:
+                - Path=/api/resumes,/api/resumes/**
             - id: career-api
               uri: lb://career-pilot-server
               predicates:

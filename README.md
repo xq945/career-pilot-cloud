@@ -33,6 +33,8 @@ career-pilot-ai/
 │  ├─ career-domain-*/    业务域（auth / resume / job / match / interview / agent）
 │  ├─ career-job-client/  岗位服务远程客户端（Feign）
 │  ├─ career-job-service/ 岗位服务（8083，岗位 CRUD/进度/分析）
+│  ├─ career-resume-client/  简历服务远程客户端（Feign）
+│  ├─ career-resume-service/ 简历服务（8082，简历 CRUD/上传/文本提取/分析）
 │  ├─ career-app/         剩余业务单体（8091）
 │  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
@@ -112,6 +114,14 @@ mysql -u root -p < Mysql/migration-stage4-auth.sql
 mysql -u root -p < Mysql/migration-stage6-job.sql
 ```
 
+阶段 6b 起，简历数据拆到 `cp_resume`（首次部署再执行一次）：
+
+```bash
+mysql -u root -p < Mysql/migration-stage6b-resume.sql
+```
+
+该脚本创建 `cp_resume`、复制 `resume` / `resume_analysis`，并删除 `career_pilot` 下匹配、面试、优化记录对简历表的跨库外键。
+
 ### 2. 配置后端
 
 复制配置模板并填入真实值：
@@ -154,15 +164,20 @@ DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' 
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-job-service/target/career-job.jar
 
-# 3) 认证服务：8081（验证码/JWT/资料/头像）
+# 3) 简历服务：8082（简历 CRUD / 上传与文本提取 / 简历分析）
+#    文件存储与 auth 服务共享 app.file.storage-root（默认 ${user.home}/career-pilot-uploads）
+DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  java -jar career-resume-service/target/career-resume.jar
+
+# 4) 认证服务：8081（验证码/JWT/资料/头像）
 #    DB_PASSWORD 为 MySQL 密码；APP_JWT_SECRET 与 application-local.yml 的 app.jwt.secret 相同
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-auth-service/target/career-auth.jar
 
-# 4) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
+# 5) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
 java -jar career-app/target/career-pilot-server.jar
 
-# 5) 网关：8080（另开终端）
+# 6) 网关：8080（另开终端）
 GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-gateway/target/career-gateway.jar
 ```
@@ -214,6 +229,7 @@ npm run dev
 |---|---|---|
 | AI 服务端口 | 8087 | `server.port` / `AI_PORT` |
 | 岗位服务端口 | 8083 | `server.port` / `JOB_PORT` |
+| 简历服务端口 | 8082 | `server.port` / `RESUME_PORT` |
 | auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |
 | 剩余单体端口 | 8091 | `server.port` / `SERVER_PORT` |
 | 网关端口 | 8080 | `server.port` / `GATEWAY_PORT` |

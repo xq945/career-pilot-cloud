@@ -44,6 +44,9 @@ app:
     # 同 app.match：AiCallProperties 是构造器绑定的 fail-fast 配置，本文件优先于
     # src/main/resources/application.yml，必须同步声明，否则上下文加载失败。
     structured-max-attempts: 2
+  resume:
+    # 测试走本地 Resume 实现（不发起远程 Feign 调用）
+    mode: local
   job:
     # 测试走本地 Job 实现（不发起远程 Feign 调用）
     mode: local

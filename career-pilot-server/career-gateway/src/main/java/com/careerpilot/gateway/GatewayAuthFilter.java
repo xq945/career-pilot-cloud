@@ -111,6 +111,9 @@ public class GatewayAuthFilter implements GlobalFilter, Ordered {
             else if (path.equals("/api/jobs") || path.startsWith("/api/jobs/")) {
                 targetAudience = "career-job";
             }
+            else if (path.equals("/api/resumes") || path.startsWith("/api/resumes/")) {
+                targetAudience = "career-resume";
+            }
             else {
                 targetAudience = APP_AUDIENCE;
             }

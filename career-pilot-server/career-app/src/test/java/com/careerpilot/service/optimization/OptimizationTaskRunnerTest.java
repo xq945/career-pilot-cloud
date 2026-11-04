@@ -24,8 +24,6 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
-import com.careerpilot.mapper.JobMapper;
-import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.JobAnalysisService;
 import com.careerpilot.service.JobService;
@@ -33,6 +31,7 @@ import com.careerpilot.service.MatchScoringResult;
 import com.careerpilot.service.MatchScoringService;
 import com.careerpilot.service.MatchService;
 import com.careerpilot.service.ResumeAnalysisService;
+import com.careerpilot.service.ResumeService;
 import com.careerpilot.service.ai.ResumeOptimizationAiService;
 
 /**
@@ -53,7 +52,7 @@ class OptimizationTaskRunnerTest {
     private ResumeOptimizationMapper optimizationMapper;
 
     @Mock
-    private ResumeMapper resumeMapper;
+    private ResumeService resumeService;
 
     @Mock
     private JobService jobService;
@@ -80,7 +79,7 @@ class OptimizationTaskRunnerTest {
 
     @BeforeEach
     void setUp() {
-        runner = new OptimizationTaskRunner(optimizationMapper, resumeMapper, jobService,
+        runner = new OptimizationTaskRunner(optimizationMapper, resumeService, jobService,
                 resumeAnalysisService, jobAnalysisService, matchService, matchScoringService,
                 resumeOptimizationAiService, stateService);
     }
@@ -108,7 +107,7 @@ class OptimizationTaskRunnerTest {
                 new BigDecimal("75.75"), new MatchDimensionScores("v1", List.of()), List.of());
 
         when(optimizationMapper.selectById(OPTIMIZATION_ID)).thenReturn(record);
-        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume);
+        when(resumeService.getResumeById(RESUME_ID)).thenReturn(resume);
         when(jobService.getJobById(JOB_ID)).thenReturn(job);
         when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis);
         when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis);
@@ -154,7 +153,7 @@ class OptimizationTaskRunnerTest {
         jobAnalysis.setSourceHash(Hashing.sha256Hex(DESCRIPTION));
 
         when(optimizationMapper.selectById(OPTIMIZATION_ID)).thenReturn(record);
-        when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume);
+        when(resumeService.getResumeById(RESUME_ID)).thenReturn(resume);
         when(jobService.getJobById(JOB_ID)).thenReturn(job);
         when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis);
         when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis);

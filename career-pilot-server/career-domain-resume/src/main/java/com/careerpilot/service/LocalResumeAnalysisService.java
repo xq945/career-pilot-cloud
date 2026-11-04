@@ -151,6 +151,15 @@ public class LocalResumeAnalysisService implements ResumeAnalysisService {
     }
 
     @Override
+    public List<ResumeAnalysis> getAnalysesByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return resumeAnalysisMapper.selectList(Wrappers.<ResumeAnalysis>lambdaQuery()
+                .in(ResumeAnalysis::getId, ids));
+    }
+
+    @Override
     public List<ResumeAnalysis> latestSuccessByResumeIds(List<Long> resumeIds) {
         if (resumeIds == null || resumeIds.isEmpty()) {
             return List.of();

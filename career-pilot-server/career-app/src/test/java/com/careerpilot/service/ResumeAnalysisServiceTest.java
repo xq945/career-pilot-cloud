@@ -197,6 +197,38 @@ class ResumeAnalysisServiceTest {
         assertThat(view.getAnalysis().getAnalysisId()).isEqualTo(10L);
     }
 
+    // ---------------------------------------------------------------- 跨域查询（阶段 6b）
+
+    @Test
+    void getAnalysesByIds_emptyIds_returnsEmptyWithoutQuery() {
+        assertThat(service.getAnalysesByIds(List.of())).isEmpty();
+        verifyNoInteractions(resumeAnalysisMapper);
+    }
+
+    @Test
+    void getAnalysesByIds_returnsRequestedVersions() {
+        when(resumeAnalysisMapper.selectList(any()))
+                .thenReturn(List.of(analysis(10L, 5L, 1, null), analysis(11L, 5L, 2, null)));
+
+        assertThat(service.getAnalysesByIds(List.of(10L, 11L)))
+                .extracting(ResumeAnalysis::getId)
+                .containsExactly(10L, 11L);
+    }
+
+    @Test
+    void countAnalyzedResumes_dedupesMultipleVersions() {
+        Resume first = resume(CONTENT);
+        first.setId(5L);
+        Resume second = resume(CONTENT);
+        second.setId(6L);
+        when(resumeService.listOwnedResumes(1L)).thenReturn(List.of(first, second));
+        // 5 号有两个版本的成功分析（只算一份简历），6 号一个
+        when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(
+                analysis(10L, 5L, 1, null), analysis(11L, 5L, 2, null), analysis(12L, 6L, 1, null)));
+
+        assertThat(service.countAnalyzedResumes(1L)).isEqualTo(2);
+    }
+
     // ---------------------------------------------------------------- 测试数据
 
     private static Resume resume(String content) {

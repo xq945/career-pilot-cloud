@@ -142,6 +142,9 @@ app:
     # 只对"输出无法解析"（50201 路径）生效；超时/网络类失败（50200）不重试。
     # 解析失败时另有本地修复（未转义引号）先于重试执行，且不计入尝试次数。
     structured-max-attempts: 2
+  resume:
+    # 阶段 6b：简历域由 career-resume 服务提供；单体通过 Feign 远程实现访问
+    mode: ${APP_RESUME_MODE:remote}
   job:
     # 阶段 6：岗位域由 career-job 服务提供；单体通过 Feign 远程实现访问
     mode: ${APP_JOB_MODE:remote}

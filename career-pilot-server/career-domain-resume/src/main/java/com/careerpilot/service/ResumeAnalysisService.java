@@ -25,6 +25,9 @@ public interface ResumeAnalysisService {
     /** 按 ID 取分析版本（不过滤状态，供历史记录展示） */
     ResumeAnalysis getAnalysisById(Long id);
 
+    /** 批量取分析版本（不过滤状态，供匹配/面试列表装配版本号） */
+    List<ResumeAnalysis> getAnalysesByIds(List<Long> ids);
+
     /** 批量取"每份简历的最新成功分析"（仪表盘/列表装配） */
     List<ResumeAnalysis> latestSuccessByResumeIds(List<Long> resumeIds);
 
