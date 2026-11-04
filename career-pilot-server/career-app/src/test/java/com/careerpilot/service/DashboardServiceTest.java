@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -62,10 +64,10 @@ class DashboardServiceTest {
     private ResumeAnalysisMapper resumeAnalysisMapper;
 
     @Mock
-    private JobMapper jobMapper;
+    private JobService jobService;
 
     @Mock
-    private JobAnalysisMapper jobAnalysisMapper;
+    private JobAnalysisService jobAnalysisService;
 
     @Mock
     private MatchRecordMapper matchRecordMapper;
@@ -84,7 +86,6 @@ class DashboardServiceTest {
     @Test
     void summary_emptyAccount_zeroCountsAndNullBoundaries() {
         when(resumeMapper.selectList(any())).thenReturn(List.of());
-        when(jobMapper.selectList(any())).thenReturn(List.of());
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
@@ -106,7 +107,7 @@ class DashboardServiceTest {
         assertTrue(summary.getTopGaps().isEmpty());
         // 空集合先短路：不对分析表发 IN 查询
         verify(resumeAnalysisMapper, never()).selectList(any());
-        verify(jobAnalysisMapper, never()).selectList(any());
+        verify(jobAnalysisService, never()).recentAnalyses(any(), anyInt());
     }
 
     // ---------------------------------------------------------------- 简历 / 岗位计数口径
@@ -127,13 +128,12 @@ class DashboardServiceTest {
 
     @Test
     void summary_jobCounts_noAnalysisAnalyzedAndStale() {
-        when(jobMapper.selectList(any())).thenReturn(List.of(
+        when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(
                 job(21L, "岗位A", "描述A"),
                 job(22L, "岗位B", "描述B"),
                 job(23L, "岗位C", "描述C-新")));
-        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
-                jobAnalysis(22L, 1, Hashing.sha256Hex("描述B")),
-                jobAnalysis(23L, 1, Hashing.sha256Hex("描述C-旧"))));
+        when(jobAnalysisService.countAnalyzedJobs(USER_ID)).thenReturn(2L);
+        when(jobAnalysisService.countStaleJobs(USER_ID)).thenReturn(1L);
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
@@ -145,10 +145,9 @@ class DashboardServiceTest {
 
     @Test
     void summary_jobCounts_usesLatestVersionForStale() {
-        when(jobMapper.selectList(any())).thenReturn(List.of(job(23L, "岗位", "描述-新版")));
-        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
-                jobAnalysis(23L, 1, Hashing.sha256Hex("描述-旧版")),
-                jobAnalysis(23L, 2, Hashing.sha256Hex("描述-新版"))));
+        when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(job(23L, "岗位", "描述-新版")));
+        when(jobAnalysisService.countAnalyzedJobs(USER_ID)).thenReturn(1L);
+        when(jobAnalysisService.countStaleJobs(USER_ID)).thenReturn(0L);
         stubEmptyMatchPage();
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
@@ -187,7 +186,7 @@ class DashboardServiceTest {
         Job deletedJob = job(21L, "Java后端开发实习生", "描述");
         deletedJob.setCompanyName("示例科技");
         deletedJob.setStatus(Job.STATUS_DELETED);
-        when(jobMapper.selectList(any())).thenReturn(List.of(deletedJob));
+        when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
 
         DashboardSummary summary = dashboardService.summary(USER_ID);
 
@@ -280,8 +279,9 @@ class DashboardServiceTest {
         when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(
                 resumeAnalysisAt(11L, "2026-10-14T10:00:05"),
                 resumeAnalysisAt(12L, "2026-10-14T10:00:04")));
-        when(jobMapper.selectList(any())).thenReturn(List.of(job(21L, "岗位A", "描述A")));
-        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(
+        when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(job(21L, "岗位A", "描述A")));
+        when(jobService.listJobsByIds(any())).thenReturn(List.of(job(21L, "岗位A", "描述A")));
+        when(jobAnalysisService.recentAnalyses(eq(USER_ID), anyInt())).thenReturn(List.of(
                 jobAnalysisAt(21L, "2026-10-14T10:00:03")));
         when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
                 optimization(301L, 11L, 21L, "2026-10-14T10:00:02"),
@@ -327,7 +327,8 @@ class DashboardServiceTest {
         Job deletedJob = job(21L, "已删岗位", "描述");
         deletedJob.setStatus(Job.STATUS_DELETED);
         when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
-        when(jobMapper.selectList(any())).thenReturn(List.of(deletedJob));
+        when(jobService.listOwnedJobs(USER_ID)).thenReturn(List.of(deletedJob));
+        when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
         when(resumeOptimizationMapper.selectList(any())).thenReturn(List.of(
                 optimization(301L, 11L, 21L, "2026-10-14T10:00:02")));
         stubEmptyMatchPage();

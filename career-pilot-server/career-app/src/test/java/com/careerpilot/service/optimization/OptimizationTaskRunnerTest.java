@@ -28,6 +28,7 @@ import com.careerpilot.mapper.JobMapper;
 import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.JobAnalysisService;
+import com.careerpilot.service.JobService;
 import com.careerpilot.service.MatchScoringResult;
 import com.careerpilot.service.MatchScoringService;
 import com.careerpilot.service.MatchService;
@@ -55,7 +56,7 @@ class OptimizationTaskRunnerTest {
     private ResumeMapper resumeMapper;
 
     @Mock
-    private JobMapper jobMapper;
+    private JobService jobService;
 
     @Mock
     private ResumeAnalysisService resumeAnalysisService;
@@ -79,7 +80,7 @@ class OptimizationTaskRunnerTest {
 
     @BeforeEach
     void setUp() {
-        runner = new OptimizationTaskRunner(optimizationMapper, resumeMapper, jobMapper,
+        runner = new OptimizationTaskRunner(optimizationMapper, resumeMapper, jobService,
                 resumeAnalysisService, jobAnalysisService, matchService, matchScoringService,
                 resumeOptimizationAiService, stateService);
     }
@@ -108,7 +109,7 @@ class OptimizationTaskRunnerTest {
 
         when(optimizationMapper.selectById(OPTIMIZATION_ID)).thenReturn(record);
         when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume);
-        when(jobMapper.selectById(JOB_ID)).thenReturn(job);
+        when(jobService.getJobById(JOB_ID)).thenReturn(job);
         when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis);
         when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis);
         when(stateService.updateStage(OPTIMIZATION_ID, "attempt-1",
@@ -154,7 +155,7 @@ class OptimizationTaskRunnerTest {
 
         when(optimizationMapper.selectById(OPTIMIZATION_ID)).thenReturn(record);
         when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume);
-        when(jobMapper.selectById(JOB_ID)).thenReturn(job);
+        when(jobService.getJobById(JOB_ID)).thenReturn(job);
         when(resumeAnalysisService.findLatestSuccess(RESUME_ID)).thenReturn(resumeAnalysis);
         when(jobAnalysisService.findLatestSuccess(JOB_ID)).thenReturn(jobAnalysis);
         when(stateService.updateStage(OPTIMIZATION_ID, "attempt-1",

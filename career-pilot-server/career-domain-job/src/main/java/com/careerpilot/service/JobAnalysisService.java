@@ -29,6 +29,9 @@ public interface JobAnalysisService {
     /** 按 ID 取分析版本（不过滤状态，供历史记录展示） */
     JobAnalysis getAnalysisById(Long id);
 
+    /** 批量按 ID 取分析版本（匹配列表的版本号装配） */
+    List<JobAnalysis> getAnalysesByIds(List<Long> ids);
+
     /** 批量取"每个岗位的最新成功分析"（仪表盘/列表装配） */
     List<JobAnalysis> latestSuccessByJobIds(List<Long> jobIds);
 

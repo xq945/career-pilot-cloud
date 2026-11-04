@@ -31,6 +31,8 @@ career-pilot-ai/
 │  ├─ career-ai-core/     AI 基础设施（AiCallTemplate/结构化输出/Provider 实现）
 │  ├─ career-ai-service/  AI 服务（8087，Provider 管理 + 模型调用代理）
 │  ├─ career-domain-*/    业务域（auth / resume / job / match / interview / agent）
+│  ├─ career-job-client/  岗位服务远程客户端（Feign）
+│  ├─ career-job-service/ 岗位服务（8083，岗位 CRUD/进度/分析）
 │  ├─ career-app/         剩余业务单体（8091）
 │  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
@@ -104,6 +106,12 @@ mysql -u root -p < Mysql/migration-stage4-auth.sql
 
 该脚本创建 `cp_auth`、复制 `sys_user`，并删除 `career_pilot` 各业务表对 `sys_user` 的跨库外键。
 
+阶段 6 起，岗位数据拆到 `cp_job`（首次部署再执行一次）：
+
+```bash
+mysql -u root -p < Mysql/migration-stage6-job.sql
+```
+
 ### 2. 配置后端
 
 复制配置模板并填入真实值：
@@ -142,15 +150,19 @@ DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' 
   DEEPSEEK_API_KEY='<DeepSeek Key>' APP_LLM_ENCRYPTION_KEY='<LLM Key 加密主密钥>' \
   java -jar career-ai-service/target/career-ai.jar
 
-# 2) 认证服务：8081（验证码/JWT/资料/头像）
+# 2) 岗位服务：8083（岗位 CRUD / 求职进度 / 岗位分析）
+DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  java -jar career-job-service/target/career-job.jar
+
+# 3) 认证服务：8081（验证码/JWT/资料/头像）
 #    DB_PASSWORD 为 MySQL 密码；APP_JWT_SECRET 与 application-local.yml 的 app.jwt.secret 相同
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-auth-service/target/career-auth.jar
 
-# 3) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
+# 4) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
 java -jar career-app/target/career-pilot-server.jar
 
-# 4) 网关：8080（另开终端）
+# 5) 网关：8080（另开终端）
 GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-gateway/target/career-gateway.jar
 ```
@@ -201,6 +213,7 @@ npm run dev
 | 项 | 默认值 | 配置项 |
 |---|---|---|
 | AI 服务端口 | 8087 | `server.port` / `AI_PORT` |
+| 岗位服务端口 | 8083 | `server.port` / `JOB_PORT` |
 | auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |
 | 剩余单体端口 | 8091 | `server.port` / `SERVER_PORT` |
 | 网关端口 | 8080 | `server.port` / `GATEWAY_PORT` |

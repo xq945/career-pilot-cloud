@@ -92,6 +92,8 @@ public class InterviewService {
 
     private final JobService jobService;
 
+    private final JobAnalysisService jobAnalysisService;
+
     private final InterviewAiService interviewAiService;
 
     private final InterviewTxService interviewTxService;
@@ -115,6 +117,7 @@ public class InterviewService {
                             JobMapper jobMapper,
                             JobAnalysisMapper jobAnalysisMapper,
                             JobService jobService,
+                            JobAnalysisService jobAnalysisService,
                             InterviewAiService interviewAiService,
                             InterviewTxService interviewTxService,
                             InterviewSummaryFallback interviewSummaryFallback,
@@ -128,6 +131,7 @@ public class InterviewService {
         this.jobMapper = jobMapper;
         this.jobAnalysisMapper = jobAnalysisMapper;
         this.jobService = jobService;
+        this.jobAnalysisService = jobAnalysisService;
         this.interviewAiService = interviewAiService;
         this.interviewTxService = interviewTxService;
         this.interviewSummaryFallback = interviewSummaryFallback;
@@ -190,11 +194,7 @@ public class InterviewService {
      * 过期判定复用 {@link JobAnalysisService#isStale}（与列表/分析接口同一口径）。
      */
     private JobAnalysis latestUsableAnalysis(Job job) {
-        JobAnalysis latest = jobAnalysisMapper.selectOne(Wrappers.<JobAnalysis>lambdaQuery()
-                .eq(JobAnalysis::getJobId, job.getId())
-                .eq(JobAnalysis::getStatus, JobAnalysis.STATUS_SUCCESS)
-                .orderByDesc(JobAnalysis::getVersionNo)
-                .last("LIMIT 1"));
+        JobAnalysis latest = jobAnalysisService.findLatestSuccess(job.getId());
         return JobAnalysisService.isStale(job.getDescription(), latest) ? null : latest;
     }
 
@@ -572,7 +572,7 @@ public class InterviewService {
      * 名称仍要显示（§7.3）、评价仍需要描述文本；FK RESTRICT 保证行始终存在。
      */
     private Job requireJob(Long jobId) {
-        Job job = jobMapper.selectById(jobId);
+        Job job = jobService.getJobById(jobId);
         if (job == null) {
             throw BusinessException.notFound("关联岗位不存在");
         }
@@ -581,7 +581,7 @@ public class InterviewService {
 
     /** 同 {@link #requireJob}，但装配场景允许缺失（返回 null，名称字段留空） */
     private Job findJob(Long jobId) {
-        return jobMapper.selectById(jobId);
+        return jobService.getJobById(jobId);
     }
 
     private List<InterviewQuestion> listQuestions(Long sessionId) {
@@ -596,9 +596,7 @@ public class InterviewService {
         if (jobIds.isEmpty()) {
             return Map.of();
         }
-        List<Job> jobs = jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                .select(Job::getId, Job::getJobName, Job::getCompanyName)
-                .in(Job::getId, jobIds));
+        List<Job> jobs = jobService.listJobsByIds(jobIds);
         return jobs.stream().collect(Collectors.toMap(Job::getId, Function.identity()));
     }
 

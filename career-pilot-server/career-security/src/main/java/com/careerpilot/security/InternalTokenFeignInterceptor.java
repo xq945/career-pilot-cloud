@@ -1,10 +1,6 @@
-package com.careerpilot.client;
+package com.careerpilot.security;
 
 import org.springframework.stereotype.Component;
-
-import com.careerpilot.security.AuthenticatedUser;
-import com.careerpilot.security.CurrentUser;
-import com.careerpilot.security.InternalTokenService;
 
 import feign.RequestInterceptor;
 import feign.RequestTemplate;

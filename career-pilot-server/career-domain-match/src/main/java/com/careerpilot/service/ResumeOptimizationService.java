@@ -393,7 +393,7 @@ public class ResumeOptimizationService {
 
         // 与优化前同源的岗位分析（外键 RESTRICT 保证存在）
         MatchRecord matchRecord = matchRecordMapper.selectById(record.getMatchRecordId());
-        JobAnalysis jobAnalysis = jobAnalysisMapper.selectById(matchRecord.getJobAnalysisId());
+        JobAnalysis jobAnalysis = jobAnalysisService.getAnalysisById(matchRecord.getJobAnalysisId());
 
         // 优化稿重新结构化分析（模型调用 + 既有清洗规则），仅落到本记录的 optimized_analysis，
         // 不写入 resume_analysis（优化稿不是一份独立简历，见《数据库设计》5.11）
@@ -425,7 +425,7 @@ public class ResumeOptimizationService {
         ResumeOptimization record = getOwned(userId, id);
         requireSuccess(record, "导出");
         Resume resume = resumeMapper.selectById(record.getResumeId());
-        Job job = jobMapper.selectById(record.getJobId());
+        Job job = jobService.getJobById(record.getJobId());
         String fileName = safeFileName((resume == null ? "简历" : resume.getName())
                 + "-" + (job == null ? "岗位" : job.getJobName()) + "-优化稿");
         return new OptimizedResumeFile(fileName + ".docx", currentContent(record));
@@ -483,10 +483,8 @@ public class ResumeOptimizationService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                        .select(Job::getId, Job::getJobName, Job::getCompanyName)
-                        .in(Job::getId, ids))
-                .stream().collect(Collectors.toMap(Job::getId, Function.identity()));
+        return jobService.listJobsByIds(ids).stream()
+                .collect(Collectors.toMap(Job::getId, Function.identity()));
     }
 
     /** 当页匹配记录（取优化前分数） */
@@ -519,7 +517,7 @@ public class ResumeOptimizationService {
      */
     private ResumeOptimizationDetail toDetail(ResumeOptimization record) {
         Resume resume = resumeMapper.selectById(record.getResumeId());
-        Job job = jobMapper.selectById(record.getJobId());
+        Job job = jobService.getJobById(record.getJobId());
         if (resume == null || job == null) {
             // 外键 RESTRICT + 逻辑删除保证两行存在；此分支仅为防御
             throw BusinessException.internalError("优化记录的来源资源缺失");
@@ -549,7 +547,7 @@ public class ResumeOptimizationService {
 
         // 以下装配同既有实现（外键 RESTRICT 保证引用的分析行存在）
         MatchRecord matchRecord = matchRecordMapper.selectById(record.getMatchRecordId());
-        JobAnalysis jobAnalysis = jobAnalysisMapper.selectById(matchRecord.getJobAnalysisId());
+        JobAnalysis jobAnalysis = jobAnalysisService.getAnalysisById(matchRecord.getJobAnalysisId());
         ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(matchRecord.getResumeAnalysisId());
         detail.setResumeVersionNo(resumeAnalysis.getVersionNo());
         detail.setJobVersionNo(jobAnalysis.getVersionNo());

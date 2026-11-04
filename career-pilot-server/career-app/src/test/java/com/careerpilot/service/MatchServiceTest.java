@@ -268,9 +268,9 @@ class MatchServiceTest {
         Job deletedJob = job();
         deletedJob.setStatus(Job.STATUS_DELETED);
         when(resumeMapper.selectList(any())).thenReturn(List.of(deletedResume));
-        when(jobMapper.selectList(any())).thenReturn(List.of(deletedJob));
+        when(jobService.listJobsByIds(any())).thenReturn(List.of(deletedJob));
         when(resumeAnalysisMapper.selectList(any())).thenReturn(List.of(resumeAnalysis()));
-        when(jobAnalysisMapper.selectList(any())).thenReturn(List.of(jobAnalysis("hash")));
+        when(jobAnalysisService.getAnalysesByIds(any())).thenReturn(List.of(jobAnalysis("hash")));
 
         PageResult<MatchView> result = matchService.list(USER_ID, new PageQuery());
 

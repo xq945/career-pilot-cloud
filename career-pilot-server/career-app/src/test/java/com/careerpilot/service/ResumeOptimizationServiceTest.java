@@ -460,7 +460,7 @@ class ResumeOptimizationServiceTest {
         when(optimizationMapper.selectOne(any())).thenReturn(record);
         // 评估复用优化前那条 match_record 的岗位分析（同一份，保证前后可比）
         when(matchRecordMapper.selectById(501L)).thenReturn(matchRecord());
-        when(jobAnalysisMapper.selectById(11L)).thenReturn(jobAnalysis());
+        when(jobAnalysisService.getAnalysisById(11L)).thenReturn(jobAnalysis());
         when(resumeAiService.analyze("用户最终稿"))
                 .thenReturn(new AiCallResult<>(new ResumeAnalysisAiOutput(), "test-model", 10L, 1, 1, 2));
         when(matchScoringService.score(any(), any())).thenReturn(scoring());
@@ -485,7 +485,7 @@ class ResumeOptimizationServiceTest {
         record.setEditedContent("用户最终稿");
         when(optimizationMapper.selectOne(any())).thenReturn(record);
         when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
-        when(jobMapper.selectById(JOB_ID)).thenReturn(job());
+        when(jobService.getJobById(JOB_ID)).thenReturn(job());
 
         OptimizedResumeFile file = service.readExport(USER_ID, 301L);
 
@@ -531,7 +531,7 @@ class ResumeOptimizationServiceTest {
             return page;
         });
         when(resumeMapper.selectList(any())).thenReturn(List.of(resume()));
-        when(jobMapper.selectList(any())).thenReturn(List.of(job()));
+        when(jobService.listJobsByIds(any())).thenReturn(List.of(job()));
         if (!matches.isEmpty()) {
             when(matchRecordMapper.selectList(any())).thenReturn(matches);
         }
@@ -583,16 +583,16 @@ class ResumeOptimizationServiceTest {
         // M16：任务行回读 + 未完成态的详情来源查询（resume/job）
         when(optimizationMapper.selectById(301L)).thenAnswer(invocation -> insertedRecord);
         when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
-        when(jobMapper.selectById(JOB_ID)).thenReturn(job());
+        when(jobService.getJobById(JOB_ID)).thenReturn(job());
     }
 
     /** toDetail 的关联查询（stubHappyPath 与各写路径共用） */
     private void stubDetailDependencies(ResumeOptimization ignored) {
         when(matchRecordMapper.selectById(501L)).thenReturn(matchRecord());
-        when(jobAnalysisMapper.selectById(11L)).thenReturn(jobAnalysis());
+        when(jobAnalysisService.getAnalysisById(11L)).thenReturn(jobAnalysis());
         when(resumeAnalysisMapper.selectById(21L)).thenReturn(resumeAnalysis());
         when(resumeMapper.selectById(RESUME_ID)).thenReturn(resume());
-        when(jobMapper.selectById(JOB_ID)).thenReturn(job());
+        when(jobService.getJobById(JOB_ID)).thenReturn(job());
     }
 
     private static ResumeOptimizationCreateRequest request() {

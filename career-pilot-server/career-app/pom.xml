@@ -41,6 +41,10 @@
         </dependency>
         <dependency>
             <groupId>com.careerpilot</groupId>
+            <artifactId>career-job-client</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.careerpilot</groupId>
             <artifactId>career-domain-match</artifactId>
         </dependency>
         <dependency>

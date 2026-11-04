@@ -13,7 +13,7 @@ import com.careerpilot.entity.JobAnalysis;
 import com.careerpilot.entity.Resume;
 import com.careerpilot.entity.ResumeAnalysis;
 import com.careerpilot.entity.ResumeOptimization;
-import com.careerpilot.mapper.JobMapper;
+import com.careerpilot.service.JobService;
 import com.careerpilot.mapper.ResumeMapper;
 import com.careerpilot.mapper.ResumeOptimizationMapper;
 import com.careerpilot.service.JobAnalysisService;
@@ -42,7 +42,7 @@ public class OptimizationTaskRunner {
 
     private final ResumeMapper resumeMapper;
 
-    private final JobMapper jobMapper;
+    private final JobService jobService;
 
     private final ResumeAnalysisService resumeAnalysisService;
 
@@ -57,14 +57,14 @@ public class OptimizationTaskRunner {
     private final OptimizationTaskStateService stateService;
 
     public OptimizationTaskRunner(ResumeOptimizationMapper optimizationMapper, ResumeMapper resumeMapper,
-                                  JobMapper jobMapper, ResumeAnalysisService resumeAnalysisService,
+                                  JobService jobService, ResumeAnalysisService resumeAnalysisService,
                                   JobAnalysisService jobAnalysisService, MatchService matchService,
                                   MatchScoringService matchScoringService,
                                   ResumeOptimizationAiService resumeOptimizationAiService,
                                   OptimizationTaskStateService stateService) {
         this.optimizationMapper = optimizationMapper;
         this.resumeMapper = resumeMapper;
-        this.jobMapper = jobMapper;
+        this.jobService = jobService;
         this.resumeAnalysisService = resumeAnalysisService;
         this.jobAnalysisService = jobAnalysisService;
         this.matchService = matchService;
@@ -83,7 +83,7 @@ public class OptimizationTaskRunner {
             throw BusinessException.notFound("优化记录不存在");
         }
         Resume resume = resumeMapper.selectById(record.getResumeId());
-        Job job = jobMapper.selectById(record.getJobId());
+        Job job = jobService.getJobById(record.getJobId());
         if (resume == null || job == null) {
             throw BusinessException.badRequest("简历或岗位已不存在，请重新创建优化");
         }

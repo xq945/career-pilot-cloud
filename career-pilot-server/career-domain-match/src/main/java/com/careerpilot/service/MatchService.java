@@ -198,9 +198,9 @@ public class MatchService {
         }
         // 外键为 ON DELETE RESTRICT，且源资源与分析行只做逻辑删除/不删除——这些行必然存在
         Resume resume = resumeMapper.selectById(record.getResumeId());
-        Job job = jobMapper.selectById(record.getJobId());
+        Job job = jobService.getJobById(record.getJobId());
         ResumeAnalysis resumeAnalysis = resumeAnalysisMapper.selectById(record.getResumeAnalysisId());
-        JobAnalysis jobAnalysis = jobAnalysisMapper.selectById(record.getJobAnalysisId());
+        JobAnalysis jobAnalysis = jobAnalysisService.getAnalysisById(record.getJobAnalysisId());
         return toDetail(record, resume.getName(), resumeAnalysis.getVersionNo(),
                 job.getJobName(), job.getCompanyName(), jobAnalysis.getVersionNo());
     }
@@ -228,10 +228,8 @@ public class MatchService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                        .select(Job::getId, Job::getJobName, Job::getCompanyName)
-                        .in(Job::getId, ids))
-                .stream().collect(Collectors.toMap(Job::getId, Function.identity()));
+        return jobService.listJobsByIds(ids).stream()
+                .collect(Collectors.toMap(Job::getId, Function.identity()));
     }
 
     /** 当页记录所依据的简历分析版本号（match_record 无 version 列，从分析表读取） */
@@ -256,9 +254,7 @@ public class MatchService {
             return Map.of();
         }
         Map<Long, Integer> versions = new HashMap<>();
-        for (JobAnalysis analysis : jobAnalysisMapper.selectList(Wrappers.<JobAnalysis>lambdaQuery()
-                .select(JobAnalysis::getId, JobAnalysis::getVersionNo)
-                .in(JobAnalysis::getId, ids))) {
+        for (JobAnalysis analysis : jobAnalysisService.getAnalysesByIds(ids)) {
             versions.put(analysis.getId(), analysis.getVersionNo());
         }
         return versions;

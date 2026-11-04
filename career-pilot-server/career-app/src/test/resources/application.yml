@@ -44,6 +44,9 @@ app:
     # 同 app.match：AiCallProperties 是构造器绑定的 fail-fast 配置，本文件优先于
     # src/main/resources/application.yml，必须同步声明，否则上下文加载失败。
     structured-max-attempts: 2
+  job:
+    # 测试走本地 Job 实现（不发起远程 Feign 调用）
+    mode: local
   llm:
     # 用户级模型服务 API Key 的加密主密钥（测试专用固定值，与真实环境无关）。
     encryption-key: test-only-llm-encryption-key-0123456789

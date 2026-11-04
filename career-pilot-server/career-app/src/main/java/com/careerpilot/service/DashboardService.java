@@ -83,9 +83,9 @@ public class DashboardService {
 
     private final ResumeAnalysisMapper resumeAnalysisMapper;
 
-    private final JobMapper jobMapper;
+    private final JobService jobService;
 
-    private final JobAnalysisMapper jobAnalysisMapper;
+    private final JobAnalysisService jobAnalysisService;
 
     private final MatchRecordMapper matchRecordMapper;
 
@@ -94,13 +94,13 @@ public class DashboardService {
     private final ResumeOptimizationMapper resumeOptimizationMapper;
 
     public DashboardService(ResumeMapper resumeMapper, ResumeAnalysisMapper resumeAnalysisMapper,
-                            JobMapper jobMapper, JobAnalysisMapper jobAnalysisMapper,
+                            JobService jobService, JobAnalysisService jobAnalysisService,
                             MatchRecordMapper matchRecordMapper, InterviewSessionMapper interviewSessionMapper,
                             ResumeOptimizationMapper resumeOptimizationMapper) {
         this.resumeMapper = resumeMapper;
         this.resumeAnalysisMapper = resumeAnalysisMapper;
-        this.jobMapper = jobMapper;
-        this.jobAnalysisMapper = jobAnalysisMapper;
+        this.jobService = jobService;
+        this.jobAnalysisService = jobAnalysisService;
         this.matchRecordMapper = matchRecordMapper;
         this.interviewSessionMapper = interviewSessionMapper;
         this.resumeOptimizationMapper = resumeOptimizationMapper;
@@ -113,9 +113,7 @@ public class DashboardService {
                 .eq(Resume::getUserId, userId)
                 .eq(Resume::getStatus, Resume.STATUS_ACTIVE))));
         summary.setResumeAnalyzedCount(resumeAnalyzedCount(userId));
-        summary.setJobCount(countOf(jobMapper.selectCount(Wrappers.<Job>lambdaQuery()
-                .eq(Job::getUserId, userId)
-                .eq(Job::getStatus, Job.STATUS_ACTIVE))));
+        summary.setJobCount((int) jobService.countOwnedJobs(userId));
         JobCounts jobCounts = jobCounts(userId);
         summary.setJobAnalyzedCount(jobCounts.analyzed());
         summary.setJobStaleCount(jobCounts.stale());
@@ -163,47 +161,11 @@ public class DashboardService {
         return analyzedResumeIds.size();
     }
 
-    /** 岗位的 analyzed / stale 计数（一次查询算出两个数，相关性由口径天然保证） */
+    /** 岗位的 analyzed / stale 计数：由岗位分析服务按同一口径计算。 */
     private JobCounts jobCounts(Long userId) {
-        List<Job> jobs = jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                .select(Job::getId, Job::getDescription)
-                .eq(Job::getUserId, userId)
-                .eq(Job::getStatus, Job.STATUS_ACTIVE));
-        if (jobs.isEmpty()) {
-            return new JobCounts(0, 0);
-        }
-        Map<Long, JobAnalysis> latestByJobId = latestSuccessByJobIds(jobs);
-        int stale = 0;
-        for (Job job : jobs) {
-            // isStale 对 latest == null 短路为 false（无分析的岗位不计 stale）
-            if (JobAnalysisService.isStale(job.getDescription(), latestByJobId.get(job.getId()))) {
-                stale += 1;
-            }
-        }
-        return new JobCounts(latestByJobId.size(), stale);
-    }
-
-    /**
-     * 本人有效岗位的最新成功分析（**全量版**，{@link JobService#latestSuccessByJobIds} 的同款算法）。
-     *
-     * <p>列表侧的该查询限「当页」（private）；仪表盘需全量，故按 user 全量重写，
-     * 算法保持「一次 IN 查询 + 内存按 jobId 取 versionNo 最大」不变
-     * （走 idx_job_analysis_hash 的最左前缀 job_id）；只 select 判定所需的三列。
-     */
-    private Map<Long, JobAnalysis> latestSuccessByJobIds(List<Job> jobs) {
-        List<Long> jobIds = jobs.stream().map(Job::getId).toList();
-        List<JobAnalysis> analyses = jobAnalysisMapper.selectList(Wrappers.<JobAnalysis>lambdaQuery()
-                .select(JobAnalysis::getJobId, JobAnalysis::getVersionNo, JobAnalysis::getSourceHash)
-                .in(JobAnalysis::getJobId, jobIds)
-                .eq(JobAnalysis::getStatus, JobAnalysis.STATUS_SUCCESS));
-        Map<Long, JobAnalysis> latestByJobId = new HashMap<>();
-        for (JobAnalysis analysis : analyses) {
-            JobAnalysis current = latestByJobId.get(analysis.getJobId());
-            if (current == null || analysis.getVersionNo() > current.getVersionNo()) {
-                latestByJobId.put(analysis.getJobId(), analysis);
-            }
-        }
-        return latestByJobId;
+        return new JobCounts(
+                (int) jobAnalysisService.countAnalyzedJobs(userId),
+                (int) jobAnalysisService.countStaleJobs(userId));
     }
 
     // ---------------------------------------------------------------- 匹配
@@ -328,22 +290,13 @@ public class DashboardService {
 
     /** 岗位分析任务：本人有效岗位的最近成功分析（标题 = 岗位名） */
     private void appendJobAnalysisTasks(List<DashboardRecentTask> tasks, Long userId) {
-        List<Job> jobs = jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                .select(Job::getId, Job::getJobName)
-                .eq(Job::getUserId, userId)
-                .eq(Job::getStatus, Job.STATUS_ACTIVE));
+        List<Job> jobs = jobService.listOwnedJobs(userId);
         if (jobs.isEmpty()) {
             return;
         }
         Map<Long, String> nameById = jobs.stream()
                 .collect(Collectors.toMap(Job::getId, Job::getJobName));
-        List<JobAnalysis> analyses = jobAnalysisMapper.selectList(Wrappers.<JobAnalysis>lambdaQuery()
-                .select(JobAnalysis::getJobId, JobAnalysis::getCreatedAt)
-                .in(JobAnalysis::getJobId, nameById.keySet())
-                .eq(JobAnalysis::getStatus, JobAnalysis.STATUS_SUCCESS)
-                .orderByDesc(JobAnalysis::getCreatedAt)
-                .orderByDesc(JobAnalysis::getId)
-                .last("LIMIT " + RECENT_TASK_PER_KIND));
+        List<JobAnalysis> analyses = jobAnalysisService.recentAnalyses(userId, RECENT_TASK_PER_KIND);
         for (JobAnalysis analysis : analyses) {
             tasks.add(task(TASK_TYPE_JOB_ANALYSIS, nameById.get(analysis.getJobId()),
                     analysis.getJobId(), analysis.getCreatedAt()));
@@ -409,9 +362,7 @@ public class DashboardService {
         if (ids.isEmpty()) {
             return Map.of();
         }
-        return jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                        .select(Job::getId, Job::getJobName)
-                        .in(Job::getId, ids))
+        return jobService.listJobsByIds(List.copyOf(ids))
                 .stream().collect(Collectors.toMap(Job::getId, Job::getJobName));
     }
 
@@ -440,9 +391,7 @@ public class DashboardService {
     /** 当页记录关联的岗位（**不过滤 status**，同上） */
     private Map<Long, Job> jobsByIds(List<MatchRecord> records) {
         List<Long> ids = records.stream().map(MatchRecord::getJobId).distinct().toList();
-        return jobMapper.selectList(Wrappers.<Job>lambdaQuery()
-                        .select(Job::getId, Job::getJobName, Job::getCompanyName)
-                        .in(Job::getId, ids))
+        return jobService.listJobsByIds(ids)
                 .stream().collect(Collectors.toMap(Job::getId, Function.identity()));
     }
 

@@ -27,9 +27,11 @@
         <module>career-domain-auth</module>
         <module>career-domain-resume</module>
         <module>career-domain-job</module>
+        <module>career-job-client</module>
         <module>career-domain-match</module>
         <module>career-domain-interview</module>
         <module>career-domain-agent</module>
+        <module>career-job-service</module>
         <module>career-ai-service</module>
         <module>career-auth-service</module>
         <module>career-app</module>
@@ -120,6 +122,16 @@
             <dependency>
                 <groupId>com.careerpilot</groupId>
                 <artifactId>career-domain-job</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.careerpilot</groupId>
+                <artifactId>career-job-client</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.careerpilot</groupId>
+                <artifactId>career-job-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

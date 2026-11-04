@@ -103,8 +103,8 @@ class InterviewServiceTest {
         resumeMapper = mock(ResumeMapper.class);
         resumeOptimizationMapper = mock(ResumeOptimizationMapper.class);
         service = new InterviewService(sessionMapper, questionMapper, jobMapper,
-                mock(JobAnalysisMapper.class), jobService, aiService, txService,
-                summaryFallback,
+                mock(JobAnalysisMapper.class), jobService, mock(JobAnalysisService.class),
+                aiService, txService, summaryFallback,
                 resumeService, resumeOptimizationService, matchRecordMapper,
                 resumeMapper, resumeOptimizationMapper);
         // M15：历史题去重查询的宽松桩（不走创建路径的用例不受影响）
@@ -478,7 +478,7 @@ class InterviewServiceTest {
         assertEquals(0, result.getTotal());
         assertTrue(result.getRecords().isEmpty());
         // 空页不发 IN 查询（无 N+1、无无谓查询）
-        verify(jobMapper, never()).selectList(any());
+        verify(jobService, never()).listJobsByIds(any());
         verify(questionMapper, never()).selectList(any());
     }
 
@@ -488,7 +488,7 @@ class InterviewServiceTest {
         when(sessionMapper.selectOne(any())).thenReturn(session(10L, InterviewSession.STATUS_ONGOING));
         when(questionMapper.selectOne(any()))
                 .thenReturn(question(100L, "请解释 Spring 的依赖注入", null, null, "SPRING"));
-        when(jobMapper.selectById(9L)).thenReturn(job());
+        when(jobService.getJobById(9L)).thenReturn(job());
     }
 
     private static InterviewCreateRequest createRequest(Long jobId, int count) {

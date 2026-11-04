@@ -160,6 +160,15 @@ public class LocalJobAnalysisService implements JobAnalysisService {
     }
 
     @Override
+    public List<JobAnalysis> getAnalysesByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        return jobAnalysisMapper.selectList(Wrappers.<JobAnalysis>lambdaQuery()
+                .in(JobAnalysis::getId, ids));
+    }
+
+    @Override
     public List<JobAnalysis> latestSuccessByJobIds(List<Long> jobIds) {
         if (jobIds == null || jobIds.isEmpty()) {
             return List.of();
