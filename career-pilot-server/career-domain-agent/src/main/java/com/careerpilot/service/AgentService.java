@@ -6,8 +6,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -55,7 +58,11 @@ import com.careerpilot.service.ai.AgentAiService;
  * </ol>
  */
 @Service
+@ConditionalOnProperty(prefix = "app.agent", name = "mode", havingValue = "local",
+        matchIfMissing = true)
 public class AgentService {
+
+    private static final Logger log = LoggerFactory.getLogger(AgentService.class);
 
     /** 会话标题上限（agent_session.title 为 VARCHAR(100)） */
     private static final int TITLE_LIMIT = 100;
@@ -116,6 +123,8 @@ public class AgentService {
         // 归属预校验先于一切模型调用
         AgentSession session = firstTurn ? null : getOwnedSession(userId, request.getSessionId());
         String sessionId = firstTurn ? generateSessionId() : session.getSessionId();
+        // 阶段 9：单轮标识（客户端可复用做日志关联/重试）；工具幂等键由它派生
+        String turnId = normalizeTurnId(request.getTurnId());
 
         Resume contextResume = request.getResumeId() == null
                 ? null : resumeService.getOwnedResume(userId, request.getResumeId());
@@ -136,22 +145,28 @@ public class AgentService {
         // 工具与预算：每请求一份，随请求丢弃
         AgentToolBudget budget = new AgentToolBudget(agentProperties.totalTimeoutMillis());
         AgentToolCallRecorder recorder =
-                new AgentToolCallRecorder(budget, agentProperties.maxToolCalls());
+                new AgentToolCallRecorder(budget, agentProperties.maxToolCalls(), turnId);
         List<ToolCallback> toolCallbacks = agentToolRegistry.wrap(recorder);
 
         // 模型调用（内含任意次模型回合与工具执行，事务之外）：失败 502 先于任何写入抛出
         LocalDateTime userMessageAt = LocalDateTime.now().withNano(0);
+        log.info("Agent 对话开始：turnId={} sessionId={} userId={} 工具上限={} 时长预算={}ms",
+                turnId, sessionId, userId, agentProperties.maxToolCalls(),
+                agentProperties.totalTimeoutMillis());
         AgentCallResult result = agentAiService.chat(conversation, toolCallbacks);
         LocalDateTime assistantMessageAt = LocalDateTime.now().withNano(0);
 
         if (firstTurn) {
             session = newSession(userId, sessionId, message, userMessageAt, assistantMessageAt);
         }
-        agentTxService.saveTurn(session, firstTurn, userId, message,
+        agentTxService.saveTurn(session, firstTurn, userId, turnId, message,
                 recorder.calls(), result.message(), userMessageAt, assistantMessageAt);
+        log.info("Agent 对话完成：turnId={} sessionId={} 工具调用={} truncated={}",
+                turnId, sessionId, recorder.calls().size(), recorder.truncated());
 
         AgentChatResponse response = new AgentChatResponse();
         response.setSessionId(sessionId);
+        response.setTurnId(turnId);
         response.setMessage(result.message());
         response.setTruncated(recorder.truncated());
         response.setToolCalls(recorder.calls().stream()
@@ -181,6 +196,11 @@ public class AgentService {
     /** 会话标识：UUID 去连字符（32 字符，VARCHAR(64) 富余），不暴露自增 id */
     private static String generateSessionId() {
         return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    /** 单轮标识：客户端提供则原样使用（已 trim），否则生成 32 位 UUID */
+    private static String normalizeTurnId(String turnId) {
+        return turnId == null || turnId.isBlank() ? generateSessionId() : turnId.trim();
     }
 
     // ---------------------------------------------------------------- 列表与回看（§8.2/§8.3）

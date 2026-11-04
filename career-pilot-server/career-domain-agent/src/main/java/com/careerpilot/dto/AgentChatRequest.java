@@ -21,6 +21,13 @@ public class AgentChatRequest {
     @Size(max = 2000, message = "消息不能超过 2000 个字符")
     private String message;
 
+    /**
+     * 阶段 9：单轮标识（可选）。客户端重试同一请求时可复用该值，用于日志关联与工具幂等键；
+     * 省略时由服务端生成（UUID 去连字符）。
+     */
+    @Size(max = 36, message = "单轮标识长度不能超过 36 个字符")
+    private String turnId;
+
     /** 本次对话引用的简历（可选上下文资源） */
     @Positive(message = "简历 ID 必须为正整数")
     private Long resumeId;
@@ -43,6 +50,14 @@ public class AgentChatRequest {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public String getTurnId() {
+        return turnId;
+    }
+
+    public void setTurnId(String turnId) {
+        this.turnId = turnId;
     }
 
     public Long getResumeId() {

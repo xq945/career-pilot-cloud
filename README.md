@@ -39,6 +39,7 @@ career-pilot-ai/
 │  ├─ career-match-service/  匹配与优化服务（8084，匹配/优化/Redis Stream worker）
 │  ├─ career-interview-client/  面试服务远程客户端（Feign）
 │  ├─ career-interview-service/ 面试服务（8085，面试/日程/总评异步化）
+│  ├─ career-agent-service/ 智能体服务（8086，Tool Calling + 四个远程工具）
 │  ├─ career-app/         剩余业务单体（8091）
 │  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
@@ -142,6 +143,14 @@ mysql -u root -p < Mysql/migration-stage8-interview.sql
 
 该脚本创建 `cp_interview`、复制 `interview_session` / `interview_question` / `interview_schedule`，新增 `context_snapshot` 与事件投递表（`outbox_event`、`mq_consumed_message`）。
 
+阶段 9 起，Agent 会话数据拆到 `cp_agent`（首次部署再执行一次）：
+
+```bash
+mysql -u root -p < Mysql/migration-stage9-agent.sql
+```
+
+该脚本创建 `cp_agent`、复制 `agent_session` / `agent_chat_message`，新增 `turn_id`，并创建 `cp_agent.llm_provider` 只读视图（过渡：Agent 本地 Tool Calling 仍读取用户级 Provider）。
+
 ### 2. 配置后端
 
 复制配置模板并填入真实值：
@@ -200,20 +209,27 @@ DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' 
   RABBITMQ_HOST=127.0.0.1 RABBITMQ_PORT=5672 RABBITMQ_USERNAME=guest RABBITMQ_PASSWORD=guest \
   java -jar career-interview-service/target/career-interview.jar
 
-# 6) 认证服务：8081（验证码/JWT/资料/头像）
+# 6) 智能体服务：8086（Tool Calling + 四个远程工具）
+#    保留本地模型调用：需要 DEEPSEEK_API_KEY 与用户级 Provider 的加密主密钥
+DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
+  DEEPSEEK_API_KEY='<DeepSeek Key>' APP_LLM_ENCRYPTION_KEY='<LLM Key 加密主密钥>' \
+  java -jar career-agent-service/target/career-agent.jar
+
+# 7) 认证服务：8081（验证码/JWT/资料/头像）
 #    DB_PASSWORD 为 MySQL 密码；APP_JWT_SECRET 与 application-local.yml 的 app.jwt.secret 相同
 DB_PASSWORD='<MySQL 密码>' APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-auth-service/target/career-auth.jar
 
-# 7) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
+# 8) 剩余业务单体：8091（另开终端，自动读取 career-app 的 application-local.yml）
 java -jar career-app/target/career-pilot-server.jar
 
-# 8) 网关：8080（另开终端）
+# 9) 网关：8080（另开终端）
 GATEWAY_PORT=8080 APP_JWT_SECRET='<与 app.jwt.secret 相同的值>' \
   java -jar career-gateway/target/career-gateway.jar
 ```
 
-> 阶段 5 起，AI 服务与单体（Agent 工具调用）暂时共享 `career_pilot.llm_provider`；Agent 拆分后再迁移到 `cp_ai`。
+> 阶段 5 起，`llm_provider` 仍位于 `career_pilot`；阶段 9 的 Agent 服务通过 `cp_agent.llm_provider`
+> 只读视图读取（过渡方案），Provider 最终归属 `cp_ai` 与模型代理工具化留待后续阶段。
 
 服务地址 `http://localhost:8080`（经网关）；单体直连为 `http://localhost:8081`。本机 8080 被其他程序占用时，把 `GATEWAY_PORT` 改为 18080 等空闲端口，并把前端 `VITE_API_BASE_URL` 指向同一端口。
 
@@ -264,6 +280,9 @@ npm run dev
 | 匹配服务端口 | 8084 | `server.port` / `MATCH_PORT` |
 | 优化 Worker 角色 | `all` | `app.optimization.role` / `APP_OPTIMIZATION_ROLE`（`api` 不消费任务） |
 | 面试服务端口 | 8085 | `server.port` / `INTERVIEW_PORT` |
+| 智能体服务端口 | 8086 | `server.port` / `AGENT_PORT` |
+| Agent 单轮工具上限 | 2 | `app.agent.max-tool-calls` / `APP_AGENT_MAX_TOOL_CALLS` |
+| Agent 总时长预算 | 120 秒 | `app.agent.total-timeout-millis` |
 | 总评异步开关 | `true` | `app.interview.summary.async-enabled` / `APP_INTERVIEW_SUMMARY_ASYNC_ENABLED`（`false` 回到提交时同步生成） |
 | RabbitMQ 地址 | 127.0.0.1:5672 | `spring.rabbitmq.*` / `RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USERNAME`、`RABBITMQ_PASSWORD` |
 | auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |

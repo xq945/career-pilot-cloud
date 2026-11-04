@@ -30,6 +30,8 @@ app:
     expire-seconds: 300
     max-size: 10000
   agent:
+    # 测试走本地 Agent 装配（控制器已迁出，但 AgentService/ToolRegistry 单测直接实例化）
+    mode: local
     # 同 app.match：本文件在测试 classpath 上优先于 src/main/resources/application.yml，
     # AgentProperties 是构造器绑定的 fail-fast 配置，不同步声明会导致上下文加载测试（与
     # Mockito 测试的 lambda 缓存）连带失败，故此处按主配置口径补齐。

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.mock;
@@ -173,14 +174,29 @@ class AgentServiceTest {
                 request("  帮我看看这份简历\n适不适合这个岗位  ", null, null, null));
 
         assertEquals(32, response.getSessionId().length(), "会话标识为 UUID 去连字符");
+        assertEquals(32, response.getTurnId().length(), "未提供 turnId 时服务端生成 32 位标识");
         // 落库的消息正文只 trim 首尾；标题额外折叠空白
         ArgumentCaptor<AgentSession> sessionCaptor = ArgumentCaptor.forClass(AgentSession.class);
-        verify(txService).saveTurn(sessionCaptor.capture(), eq(true), eq(7L),
+        verify(txService).saveTurn(sessionCaptor.capture(), eq(true), eq(7L), anyString(),
                 eq("帮我看看这份简历\n适不适合这个岗位"), anyList(), eq("这是回答"), any(), any());
         assertEquals("帮我看看这份简历 适不适合这个岗位", sessionCaptor.getValue().getTitle());
         assertEquals(7L, sessionCaptor.getValue().getUserId());
         assertEquals(response.getSessionId(), sessionCaptor.getValue().getSessionId());
         assertTrue(response.getToolCalls().isEmpty());
+    }
+
+    @Test
+    void chat_clientProvidedTurnId_isReturnedAndPersisted() {
+        when(aiService.chat(any(), any()))
+                .thenReturn(new AgentCallResult("这是回答", "deepseek-flash", 1500L, 10, 20, 30));
+        AgentChatRequest request = request("继续", null, null, null);
+        request.setTurnId("turn-client-1");
+
+        AgentChatResponse response = service.chat(7L, request);
+
+        assertEquals("turn-client-1", response.getTurnId());
+        verify(txService).saveTurn(any(), eq(true), eq(7L), eq("turn-client-1"),
+                any(), anyList(), any(), any(), any());
     }
 
     @Test
@@ -203,7 +219,7 @@ class AgentServiceTest {
         assertTrue(response.isTruncated());
         assertEquals(1, response.getToolCalls().size());
         assertEquals("analyzeResume", response.getToolCalls().get(0).getToolName());
-        verify(txService).saveTurn(any(), anyBoolean(), eq(7L), any(), anyList(), any(), any(), any());
+        verify(txService).saveTurn(any(), anyBoolean(), eq(7L), anyString(), any(), anyList(), any(), any(), any());
     }
 
     // ---------------------------------------------------------------- 列表与回看（§8.2/§8.3）

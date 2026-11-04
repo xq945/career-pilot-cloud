@@ -12,6 +12,9 @@ public class AgentChatResponse {
 
     private String sessionId;
 
+    /** 阶段 9：本轮标识（请求未提供时由服务端生成），客户端可用于日志关联/重试幂等键 */
+    private String turnId;
+
     private String message;
 
     private boolean truncated;
@@ -25,6 +28,14 @@ public class AgentChatResponse {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getTurnId() {
+        return turnId;
+    }
+
+    public void setTurnId(String turnId) {
+        this.turnId = turnId;
     }
 
     public String getMessage() {

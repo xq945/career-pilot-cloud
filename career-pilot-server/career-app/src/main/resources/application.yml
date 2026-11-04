@@ -121,6 +121,8 @@ app:
     # 过期项清理任务的 cron（默认每 5 分钟；cron 简写不可写进 JavaDoc 块注释）
     cleanup-cron: ${APP_CAPTCHA_CLEANUP_CRON:0 */5 * * * *}
   agent:
+    # 阶段 9：智能体由 career-agent 服务提供；单体不再暴露 /api/agent 与工具装配
+    mode: ${APP_AGENT_MODE:remote}
     # 单次对话总时长预算（《API接口设计》§8.1：总时长不超过 120 秒）。
     # 落地方式为「回合边界的协作式终止」：每个工具执行前检查截止时间，超时则拒绝执行、
     # 让模型基于已有结果收尾（整轮是阻塞调用，无法硬中断在途的 HTTP 读；

@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.careerpilot.agent.tools.InterviewAgentTools;
@@ -25,6 +26,8 @@ import com.careerpilot.ai.RecordingToolCallback;
  * 回调仅在每次对话请求时经 {@link #wrap} 现场构建。
  */
 @Component
+@ConditionalOnProperty(prefix = "app.agent", name = "mode", havingValue = "local",
+        matchIfMissing = true)
 public class AgentToolRegistry {
 
     private final List<ToolCallback> rawCallbacks;

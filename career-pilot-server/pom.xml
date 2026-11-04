@@ -38,6 +38,7 @@
         <module>career-resume-service</module>
         <module>career-match-service</module>
         <module>career-interview-service</module>
+        <module>career-agent-service</module>
         <module>career-ai-service</module>
         <module>career-auth-service</module>
         <module>career-app</module>
@@ -183,6 +184,11 @@
             <dependency>
                 <groupId>com.careerpilot</groupId>
                 <artifactId>career-domain-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.careerpilot</groupId>
+                <artifactId>career-agent-service</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

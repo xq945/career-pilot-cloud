@@ -9,6 +9,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 
 import com.careerpilot.common.BusinessException;
+import com.careerpilot.common.Hashing;
 
 /**
  * 记录型工具回调：包装原始 {@code ToolCallback}，在执行前后记录调用信息并执行两类拦截
@@ -71,6 +72,15 @@ public final class RecordingToolCallback implements ToolCallback {
             return AgentToolPayloads.failure(AgentToolPayloads.ERROR_TIME_EXHAUSTED,
                     "本次对话已超过总时长上限（" + recorder.budget().totalTimeoutSeconds()
                             + " 秒），该工具未执行。请基于已经取得的结果作答，并说明未能完成的部分。");
+        }
+
+        // 阶段 9：工具幂等键 = turnId + 工具名 + 入参哈希（一期只记日志，便于跨服务追踪与重试排查）
+        String idempotencyKey = recorder.turnId() == null ? null
+                : recorder.turnId() + ":" + toolName + ":"
+                        + Hashing.sha256Hex(toolInput == null ? "" : toolInput);
+        if (idempotencyKey != null) {
+            log.info("Agent 工具调用：turnId={} tool={} idempotencyKey={}",
+                    recorder.turnId(), toolName, idempotencyKey);
         }
 
         long startNanos = System.nanoTime();

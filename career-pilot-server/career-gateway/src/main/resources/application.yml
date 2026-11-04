@@ -43,6 +43,14 @@ spring:
               uri: lb://career-interview
               predicates:
                 - Path=/api/interviews,/api/interviews/**,/api/interview-schedules,/api/interview-schedules/**
+            - id: career-agent
+              uri: lb://career-agent
+              predicates:
+                - Path=/api/agent,/api/agent/**
+              # 方案 §2.10.2：Gateway → career-agent 连接 2s / 读 150s（120s 预算 + 余量）
+              metadata:
+                connect-timeout: 2000
+                response-timeout: 150000
             - id: career-api
               uri: lb://career-pilot-server
               predicates:

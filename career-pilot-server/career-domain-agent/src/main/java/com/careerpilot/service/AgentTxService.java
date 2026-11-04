@@ -55,6 +55,7 @@ public class AgentTxService {
      *
      * @param session           会话实体；首轮时 id 为空（本方法插入并回填），否则为已存在会话
      * @param firstTurn         是否首轮（决定是否插入会话元数据）
+     * @param turnId            本轮标识（同一轮的 user/tool/assistant 消息共用）
      * @param userMessage       本轮用户消息原文（已 trim）
      * @param toolCalls         本轮实际执行的工具调用（被拒绝的调用不在其中）
      * @param assistantMessage  助手回复
@@ -62,7 +63,7 @@ public class AgentTxService {
      * @param assistantMessageAt 助手回复时间（模型返回后）
      */
     @Transactional
-    public void saveTurn(AgentSession session, boolean firstTurn, Long userId,
+    public void saveTurn(AgentSession session, boolean firstTurn, Long userId, String turnId,
                          String userMessage, List<RecordedToolCall> toolCalls,
                          String assistantMessage, LocalDateTime userMessageAt,
                          LocalDateTime assistantMessageAt) {
@@ -70,13 +71,14 @@ public class AgentTxService {
             agentSessionMapper.insert(session);
         }
 
-        insertTextMessage(userId, session.getSessionId(),
+        insertTextMessage(userId, session.getSessionId(), turnId,
                 AgentChatMessage.ROLE_USER, userMessage, userMessageAt);
 
         for (RecordedToolCall call : toolCalls) {
             AgentChatMessage tool = new AgentChatMessage();
             tool.setUserId(userId);
             tool.setSessionId(session.getSessionId());
+            tool.setTurnId(turnId);
             tool.setRole(AgentChatMessage.ROLE_TOOL);
             tool.setToolName(call.toolName());
             tool.setToolArguments(parseArguments(call.argumentsJson()));
@@ -87,7 +89,7 @@ public class AgentTxService {
             agentChatMessageMapper.insert(tool);
         }
 
-        insertTextMessage(userId, session.getSessionId(),
+        insertTextMessage(userId, session.getSessionId(), turnId,
                 AgentChatMessage.ROLE_ASSISTANT, assistantMessage, assistantMessageAt);
 
         // G-8：同一事务内显式刷新会话 updated_at（会话列表排序依据）
@@ -97,11 +99,12 @@ public class AgentTxService {
         agentSessionMapper.updateById(patch);
     }
 
-    private void insertTextMessage(Long userId, String sessionId, String role,
+    private void insertTextMessage(Long userId, String sessionId, String turnId, String role,
                                    String content, LocalDateTime createdAt) {
         AgentChatMessage message = new AgentChatMessage();
         message.setUserId(userId);
         message.setSessionId(sessionId);
+        message.setTurnId(turnId);
         message.setRole(role);
         message.setContent(content);
         message.setCreatedAt(createdAt);

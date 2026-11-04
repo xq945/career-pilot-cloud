@@ -42,6 +42,12 @@ public class AgentChatMessage {
     /** 关联 agent_session.session_id */
     private String sessionId;
 
+    /**
+     * 阶段 9：单轮对话标识（同一轮的 user/tool/assistant 消息共用一个值）。
+     * 工具幂等键 = turnId + toolName + 入参哈希；一期用于落库追溯与日志关联。
+     */
+    private String turnId;
+
     /** user / assistant / tool（见常量） */
     private String role;
 
@@ -83,6 +89,14 @@ public class AgentChatMessage {
 
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
+    }
+
+    public String getTurnId() {
+        return turnId;
+    }
+
+    public void setTurnId(String turnId) {
+        this.turnId = turnId;
     }
 
     public String getRole() {

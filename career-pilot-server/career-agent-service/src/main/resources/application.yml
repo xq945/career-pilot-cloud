@@ -1,0 +1,125 @@
+server:
+  port: ${AGENT_PORT:8086}
+
+spring:
+  application:
+    name: career-agent
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+        group: CAREER_PILOT
+        enabled: ${NACOS_ENABLED:true}
+    # 工具级 Feign 超时（方案 §2.10.2：Agent → 领域服务 连接 2s / 读 90s）
+    openfeign:
+      client:
+        config:
+          resumeInternal:
+            connect-timeout: 2000
+            read-timeout: 90000
+          jobInternal:
+            connect-timeout: 2000
+            read-timeout: 90000
+          matchInternal:
+            connect-timeout: 2000
+            read-timeout: 90000
+          interviewPublic:
+            connect-timeout: 2000
+            read-timeout: 90000
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://localhost:3306/cp_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DATABASE:0}
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      # Agent 保留本地 Tool Calling，平台默认模型必须可用
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat:
+        thinking:
+          type: disabled
+        options:
+          model: deepseek-flash
+          temperature: 0.3
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 500ms
+        multiplier: 1
+        max-interval: 1s
+    chat:
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+    tools:
+      limits:
+        max-total-tool-calls: 20
+        on-limit-exceeded: RETURN_ERROR_RESPONSE
+  http:
+    clients:
+      connect-timeout: 10s
+      read-timeout: 60s
+
+app:
+  jwt:
+    secret: ${APP_JWT_SECRET:}
+    expiration-seconds: 7200
+  internal-token:
+    ttl-seconds: 300
+    audience: career-agent
+  ai:
+    # Tool Calling 保留本地（方案 §4.3）；业务结构化调用不经过本服务
+    mode: local
+    structured-max-attempts: 2
+  llm:
+    encryption-key: ${APP_LLM_ENCRYPTION_KEY:}
+    connect-timeout: 10s
+    read-timeout: 60s
+  agent:
+    # 本服务持有 Agent 实现；单体侧为 remote（不再暴露 /api/agent）
+    mode: local
+    # 总预算 120s；单轮工具上限 2（方案 §2.10.2 方案 B：同步返回时控制最坏时长）
+    total-timeout-millis: ${APP_AGENT_TOTAL_TIMEOUT_MILLIS:120000}
+    max-tool-calls: ${APP_AGENT_MAX_TOOL_CALLS:2}
+    history-message-limit: 10
+    history-char-limit: 6000
+    catalog-limit: 20
+  resume:
+    mode: remote
+  job:
+    mode: remote
+  match:
+    mode: remote
+    # 本服务不执行匹配；仅为被扫描的 MatchScoringService 满足 fail-fast 校验
+    rule-version: v1
+    weights:
+      required-skills: 45
+      project-relevance: 25
+      experience: 15
+      education: 10
+      preferred-skills: 5
+  interview:
+    mode: remote
+  optimization:
+    async:
+      # Agent 不执行优化任务；关闭后不装配 OptimizationStreamProducer
+      enabled: false
+  file:
+    # 本服务不读写文件；仅为满足被扫描的 FileStorageProperties（域模块传递依赖）
+    storage-type: ${FILE_STORAGE_TYPE:local}
+    storage-root: ${FILE_STORAGE_ROOT:${user.home}/career-pilot-uploads}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

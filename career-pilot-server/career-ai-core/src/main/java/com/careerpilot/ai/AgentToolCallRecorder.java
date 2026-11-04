@@ -23,6 +23,12 @@ public final class AgentToolCallRecorder {
 
     private final int maxToolCalls;
 
+    /**
+     * 阶段 9：单轮标识（工具幂等键的组成部分）；单测/无轮次场景为 null。
+     * 幂等键 = turnId + toolName + 入参 SHA-256，仅用于日志关联（一期不缓存工具结果）。
+     */
+    private final String turnId;
+
     /** 已实际执行（含失败）的工具调用；达到上限后被拒绝的调用**不**计入（AG-12：toolCalls ≤ 5） */
     private final List<RecordedToolCall> calls = new ArrayList<>();
 
@@ -30,8 +36,18 @@ public final class AgentToolCallRecorder {
     private boolean limitRejected;
 
     public AgentToolCallRecorder(AgentToolBudget budget, int maxToolCalls) {
+        this(budget, maxToolCalls, null);
+    }
+
+    public AgentToolCallRecorder(AgentToolBudget budget, int maxToolCalls, String turnId) {
         this.budget = budget;
         this.maxToolCalls = maxToolCalls;
+        this.turnId = turnId;
+    }
+
+    /** 单轮标识（可空） */
+    public String turnId() {
+        return turnId;
     }
 
     public AgentToolBudget budget() {

@@ -53,7 +53,7 @@ class AgentTxServiceTest {
         List<RecordedToolCall> calls = List.of(new RecordedToolCall("analyzeResume",
                 "{\"resumeId\":12}", "SUCCESS", "简历分析完成", 1234L, userAt.plusSeconds(5)));
 
-        service.saveTurn(session, true, 7L, "帮我分析简历", calls, "分析结果如下", userAt, assistantAt);
+        service.saveTurn(session, true, 7L, "turn-1", "帮我分析简历", calls, "分析结果如下", userAt, assistantAt);
 
         InOrder inOrder = inOrder(sessionMapper, messageMapper);
         inOrder.verify(sessionMapper).insert(session);
@@ -65,6 +65,9 @@ class AgentTxServiceTest {
         List<AgentChatMessage> saved = messages.getAllValues();
         assertEquals(AgentChatMessage.ROLE_USER, saved.get(0).getRole());
         assertEquals("帮我分析简历", saved.get(0).getContent());
+        assertEquals("turn-1", saved.get(0).getTurnId());
+        assertEquals("turn-1", saved.get(1).getTurnId());
+        assertEquals("turn-1", saved.get(2).getTurnId());
         assertEquals(userAt, saved.get(0).getCreatedAt());
         assertEquals(AgentChatMessage.ROLE_TOOL, saved.get(1).getRole());
         assertEquals("analyzeResume", saved.get(1).getToolName());
@@ -83,7 +86,7 @@ class AgentTxServiceTest {
         session.setSessionId("sid-1");
         LocalDateTime now = LocalDateTime.of(2026, 10, 10, 13, 0, 0);
 
-        service.saveTurn(session, false, 7L, "继续", List.of(), "好的", now, now.plusSeconds(10));
+        service.saveTurn(session, false, 7L, "turn-2", "继续", List.of(), "好的", now, now.plusSeconds(10));
 
         verify(sessionMapper, never()).insert(isA(AgentSession.class));
         ArgumentCaptor<AgentSession> patch = ArgumentCaptor.forClass(AgentSession.class);
@@ -103,7 +106,7 @@ class AgentTxServiceTest {
         List<RecordedToolCall> calls = List.of(new RecordedToolCall("analyzeResume",
                 "不是JSON", "SUCCESS", "摘要", 5L, now));
 
-        service.saveTurn(session, false, 7L, "hi", calls, "ok", now, now);
+        service.saveTurn(session, false, 7L, "turn-3", "hi", calls, "ok", now, now);
 
         ArgumentCaptor<AgentChatMessage> messages = ArgumentCaptor.forClass(AgentChatMessage.class);
         verify(messageMapper, times(3)).insert(messages.capture());
