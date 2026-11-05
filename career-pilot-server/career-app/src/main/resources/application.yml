@@ -44,6 +44,18 @@ spring:
     # 保证 ≤50MB 的超限请求都能收到 413/41300 而非连接中断。
     max-swallow-size: 50MB
 
+  # 阶段 10：Dashboard 缓存失效事件（interview.completed / optimization.completed）
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    listener:
+      simple:
+        # 失效事件是"尽力而为"：解析失败/停机时不重投，缓存仍有 30s TTL 兜底
+        default-requeue-rejected: false
+
   ai:
     deepseek:
       base-url: https://api.deepseek.com
@@ -202,6 +214,15 @@ app:
       experience: 15
       education: 10
       preferred-skills: 5
+  dashboard:
+    # 阶段 10：工作台短缓存 + 事件失效
+    cache-ttl-seconds: ${APP_DASHBOARD_CACHE_TTL_SECONDS:30}
+    cache-max-users: ${APP_DASHBOARD_CACHE_MAX_USERS:1000}
+    # 无 RabbitMQ 的单体单独运行环境可置 false（只保留 TTL 失效）
+    event-invalidation-enabled: ${APP_DASHBOARD_EVENT_INVALIDATION_ENABLED:true}
+    mq:
+      exchange: ${APP_DASHBOARD_MQ_EXCHANGE:cp.dev.topic}
+      queue: ${APP_DASHBOARD_MQ_QUEUE:cp.dev.dashboard.invalidate.q}
   cors:
     # 开发环境前端来源（《系统架构设计》7.2）；
     # 生产环境与 API 同源部署，届时不应再开放跨域
@@ -213,3 +234,20 @@ app:
     storage-type: ${FILE_STORAGE_TYPE:local}
     # local 实现的存储根目录，须位于项目运行目录之外；不存在时应用启动即创建
     storage-root: ${FILE_STORAGE_ROOT:${user.home}/career-pilot-uploads}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    level: "%5p [%X{traceId:-}]"

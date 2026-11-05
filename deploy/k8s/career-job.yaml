@@ -1,0 +1,63 @@
+# 示例：岗位服务。其余服务复制本文件，替换 name/port/SPRING_DATASOURCE_URL/镜像 tag。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: career-job
+  namespace: career-pilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: career-job
+  template:
+    metadata:
+      labels:
+        app: career-job
+    spec:
+      containers:
+        - name: career-job
+          image: career-pilot/career-job:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: career-common
+            - secretRef:
+                name: career-secrets
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql:3306/cp_job?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: career-job
+  namespace: career-pilot
+spec:
+  selector:
+    app: career-job
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http

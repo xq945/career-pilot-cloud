@@ -43,6 +43,7 @@ career-pilot-ai/
 │  ├─ career-app/         剩余业务单体（8091）
 │  ├─ career-auth-service/ 认证服务（8081，验证码/JWT/资料/头像）
 │  └─ career-gateway/     网关（8080，JWT 验签 + Nacos 路由）
+├─ deploy/                一键部署（docker-compose）+ k8s 清单样例 + Prometheus 抓取说明
 ├─ career-pilot-web/      前端（Vue 3 + Vite）
 ├─ prototype/             前端高保真原型（HTML，双击 index.html 即可查看）
 ├─ tools/                 开发辅助工具：brand/ 品牌资源生成与校验、e2e/ 浏览器端到端验证、
@@ -177,6 +178,10 @@ cp application-local.yml.example application-local.yml
 
 ### 3. 启动后端
 
+> 需要一键起全部服务（含 MySQL/Redis/RabbitMQ/Nacos）时，先 `mvn clean package`，
+> 再按 [deploy/README.md](deploy/README.md) 复制 `.env.example` → `.env` 并执行
+> `docker compose up -d`。以下为手动逐个启动的方式。
+
 先确认 Nacos（`127.0.0.1:8848`）、Redis（`127.0.0.1:6379`）与 RabbitMQ（`127.0.0.1:5672`）已启动。
 
 ```bash
@@ -283,6 +288,9 @@ npm run dev
 | 智能体服务端口 | 8086 | `server.port` / `AGENT_PORT` |
 | Agent 单轮工具上限 | 2 | `app.agent.max-tool-calls` / `APP_AGENT_MAX_TOOL_CALLS` |
 | Agent 总时长预算 | 120 秒 | `app.agent.total-timeout-millis` |
+| Dashboard 缓存 TTL | 30 秒 | `app.dashboard.cache-ttl-seconds` / `APP_DASHBOARD_CACHE_TTL_SECONDS` |
+| Dashboard 事件失效 | 开启 | `app.dashboard.event-invalidation-enabled` / `APP_DASHBOARD_EVENT_INVALIDATION_ENABLED` |
+| 监控端点 | `/actuator/prometheus` | 各服务已放行；日志 pattern 带 `%X{traceId}` |
 | 总评异步开关 | `true` | `app.interview.summary.async-enabled` / `APP_INTERVIEW_SUMMARY_ASYNC_ENABLED`（`false` 回到提交时同步生成） |
 | RabbitMQ 地址 | 127.0.0.1:5672 | `spring.rabbitmq.*` / `RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USERNAME`、`RABBITMQ_PASSWORD` |
 | auth 服务端口 | 8081 | `server.port` / `AUTH_PORT` |

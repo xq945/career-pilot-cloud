@@ -70,6 +70,9 @@ class DashboardServiceTest {
     @Mock
     private InterviewService interviewService;
 
+    @Mock
+    private DashboardCache dashboardCache;
+
     @InjectMocks
     private DashboardService dashboardService;
 
@@ -99,6 +102,20 @@ class DashboardServiceTest {
         // 空集合先短路：不向简历服务查最近分析
         verify(resumeAnalysisService, never()).recentAnalyses(any(), anyInt());
         verify(jobAnalysisService, never()).recentAnalyses(any(), anyInt());
+    }
+
+    @Test
+    void summary_matchSectionFailure_degradesOnlyMatchSection() {
+        when(resumeService.countOwnedResumes(USER_ID)).thenReturn(2L);
+        when(matchService.countOwnedMatches(USER_ID)).thenThrow(new RuntimeException("match down"));
+
+        DashboardSummary summary = dashboardService.summary(USER_ID);
+
+        // 部分失败：匹配分区降级，简历等其余分区照常返回
+        assertEquals(2, summary.getResumeCount());
+        assertEquals(0, summary.getMatchCount());
+        assertTrue(summary.getRecentMatches().isEmpty());
+        assertTrue(summary.getDegradedSections().contains("match"));
     }
 
     // ---------------------------------------------------------------- 简历 / 岗位计数口径

@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - career-job.yaml
+# 其余服务按 career-job.yaml 复制后加入本列表

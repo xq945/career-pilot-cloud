@@ -7,10 +7,24 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PreDestroy;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.careerpilot.dto.DashboardGapItem;
@@ -42,6 +56,8 @@ import com.careerpilot.entity.ResumeOptimization;
  */
 @Service
 public class DashboardService {
+
+    private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
 
     /** 最近匹配记录条数（9.1 定死 5） */
     private static final int RECENT_MATCH_LIMIT = 5;
@@ -84,10 +100,19 @@ public class DashboardService {
     /** 阶段 8：面试域已拆出，计数与最近会话经服务接口读取（remote/local 由配置决定） */
     private final InterviewService interviewService;
 
+    /** 阶段 10：30 秒短缓存（事件可精确失效） */
+    private final DashboardCache dashboardCache;
+
+    /**
+     * 阶段 10：分区并发执行器。虚拟线程适合这种"全是一次远程 IO"的扇出；
+     * 每任务自建 SecurityContext（Feign 拦截器需要当前用户签发内部令牌）。
+     */
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
     public DashboardService(ResumeService resumeService, ResumeAnalysisService resumeAnalysisService,
                             JobService jobService, JobAnalysisService jobAnalysisService,
                             MatchService matchService, ResumeOptimizationService resumeOptimizationService,
-                            InterviewService interviewService) {
+                            InterviewService interviewService, DashboardCache dashboardCache) {
         this.resumeService = resumeService;
         this.resumeAnalysisService = resumeAnalysisService;
         this.jobService = jobService;
@@ -95,28 +120,117 @@ public class DashboardService {
         this.matchService = matchService;
         this.resumeOptimizationService = resumeOptimizationService;
         this.interviewService = interviewService;
+        this.dashboardCache = dashboardCache;
     }
 
-    /** 汇总（9.1）：12 个字段一次装配返回 */
+    @PreDestroy
+    void shutdownExecutor() {
+        executor.close();
+    }
+
+    /**
+     * 汇总（9.1）：读缓存 → 五个分区**并发**装配 → 写缓存。
+     *
+     * <p>分区（resume / job / match / interview / tasks）互相独立：任一远程服务故障只会
+     * 把该分区降级为默认值，并把名称写入 {@code degradedSections}，其余卡片照常返回。
+     */
     public DashboardSummary summary(Long userId) {
-        DashboardSummary summary = new DashboardSummary();
-        summary.setResumeCount((int) resumeService.countOwnedResumes(userId));
-        summary.setResumeAnalyzedCount(resumeAnalyzedCount(userId));
-        summary.setJobCount((int) jobService.countOwnedJobs(userId));
-        JobCounts jobCounts = jobCounts(userId);
-        summary.setJobAnalyzedCount(jobCounts.analyzed());
-        summary.setJobStaleCount(jobCounts.stale());
-        summary.setMatchCount((int) matchService.countOwnedMatches(userId));
-        summary.setBestMatchScore(matchService.bestMatchScore(userId));
-        summary.setInterviewCount((int) interviewService.countOwnedSessions(userId));
-        summary.setInterviewOngoingCount((int) interviewService.countOwnedSessionsByStatus(
-                userId, InterviewSession.STATUS_ONGOING));
-        summary.setInterviewCompletedCount((int) interviewService.countOwnedSessionsByStatus(
-                userId, InterviewSession.STATUS_COMPLETED));
-        summary.setRecentTasks(recentTasks(userId));
-        summary.setRecentMatches(recentMatches(userId));
-        summary.setTopGaps(topGaps(userId));
+        DashboardSummary cached = dashboardCache.get(userId);
+        if (cached != null) {
+            log.debug("Dashboard 缓存命中：userId={}", userId);
+            return cached;
+        }
+        DashboardSummary summary = assemble(userId);
+        dashboardCache.put(userId, summary);
         return summary;
+    }
+
+    private DashboardSummary assemble(Long userId) {
+        Queue<String> degraded = new ConcurrentLinkedQueue<>();
+
+        CompletableFuture<int[]> resumeFuture = section(userId, "resume", degraded,
+                () -> new int[]{(int) resumeService.countOwnedResumes(userId), resumeAnalyzedCount(userId)},
+                new int[]{0, 0});
+        CompletableFuture<int[]> jobFuture = section(userId, "job", degraded, () -> {
+            JobCounts counts = jobCounts(userId);
+            return new int[]{(int) jobService.countOwnedJobs(userId), counts.analyzed(), counts.stale()};
+        }, new int[]{0, 0, 0});
+        CompletableFuture<MatchPart> matchFuture = section(userId, "match", degraded,
+                () -> new MatchPart((int) matchService.countOwnedMatches(userId),
+                        matchService.bestMatchScore(userId), recentMatches(userId), topGaps(userId)),
+                MatchPart.EMPTY);
+        CompletableFuture<int[]> interviewFuture = section(userId, "interview", degraded,
+                () -> new int[]{
+                        (int) interviewService.countOwnedSessions(userId),
+                        (int) interviewService.countOwnedSessionsByStatus(
+                                userId, InterviewSession.STATUS_ONGOING),
+                        (int) interviewService.countOwnedSessionsByStatus(
+                                userId, InterviewSession.STATUS_COMPLETED)},
+                new int[]{0, 0, 0});
+        CompletableFuture<List<DashboardRecentTask>> tasksFuture = section(userId, "recentTasks",
+                degraded, () -> recentTasks(userId), List.of());
+
+        int[] resume = resumeFuture.join();
+        int[] job = jobFuture.join();
+        MatchPart match = matchFuture.join();
+        int[] interview = interviewFuture.join();
+
+        DashboardSummary summary = new DashboardSummary();
+        summary.setResumeCount(resume[0]);
+        summary.setResumeAnalyzedCount(resume[1]);
+        summary.setJobCount(job[0]);
+        summary.setJobAnalyzedCount(job[1]);
+        summary.setJobStaleCount(job[2]);
+        summary.setMatchCount(match.count());
+        summary.setBestMatchScore(match.bestScore());
+        summary.setInterviewCount(interview[0]);
+        summary.setInterviewOngoingCount(interview[1]);
+        summary.setInterviewCompletedCount(interview[2]);
+        summary.setRecentMatches(match.recentMatches());
+        summary.setTopGaps(match.topGaps());
+        summary.setRecentTasks(tasksFuture.join());
+        summary.setDegradedSections(List.copyOf(degraded));
+        return summary;
+    }
+
+    /**
+     * 在独立线程执行一个分区：复制当前 Authentication 与 MDC（traceId）到工作线程，
+     * 失败时降级为默认值并记录分区名（部分失败不影响其他卡片）。
+     */
+    private <T> CompletableFuture<T> section(Long userId, String name, Queue<String> degraded,
+                                             Supplier<T> supplier, T fallback) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        Map<String, String> mdc = MDC.getCopyOfContextMap();
+        return CompletableFuture.supplyAsync(() -> {
+            SecurityContext context = SecurityContextHolder.createEmptyContext();
+            context.setAuthentication(authentication);
+            SecurityContextHolder.setContext(context);
+            if (mdc != null) {
+                MDC.setContextMap(mdc);
+            }
+            try {
+                return supplier.get();
+            }
+            catch (RuntimeException ex) {
+                degraded.add(name);
+                log.warn("Dashboard 分区降级：section={} userId={} 异常={}",
+                        name, userId, ex.getClass().getSimpleName());
+                return fallback;
+            }
+            finally {
+                SecurityContextHolder.clearContext();
+                MDC.clear();
+            }
+        }, executor);
+    }
+
+    /** 匹配分区结果（一次并发任务内取齐，减少线程调度） */
+    private record MatchPart(int count, Double bestScore,
+                             List<DashboardRecentMatch> recentMatches,
+                             List<DashboardGapItem> topGaps) {
+
+        private static final MatchPart EMPTY =
+                new MatchPart(0, null, List.of(), List.of());
     }
 
     // ---------------------------------------------------------------- 简历 / 岗位计数

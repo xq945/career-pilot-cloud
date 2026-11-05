@@ -1,0 +1,205 @@
+# CareerPilot 一键部署（阶段 10）
+#
+# 前置：先在 career-pilot-server 执行 `mvn clean package` 生成各服务 jar；
+# 复制 .env.example 为 .env 并填入密钥；然后在本目录执行：
+#   docker compose up -d
+#
+# 说明：
+# - MySQL 首次启动会按文件名顺序执行 ../Mysql 下的初始化与迁移脚本（数据卷为空时）；
+# - Nacos 使用 standalone 嵌入式存储，生产建议替换为 MySQL 集群；
+# - 应用镜像统一用 eclipse-temurin:21-jre + 挂载本地 jar，避免为 9 个服务各写 Dockerfile；
+# - 各服务的数据源 URL 通过 SPRING_DATASOURCE_URL 覆盖（yml 默认 localhost 便于本机直跑）。
+
+name: career-pilot
+
+x-app-common: &app-common
+  image: eclipse-temurin:21-jre
+  restart: unless-stopped
+  working_dir: /app
+  environment: &app-env
+    DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:-careerpilot}
+    APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET is required}
+    NACOS_ADDR: nacos:8848
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    RABBITMQ_HOST: rabbitmq
+    RABBITMQ_PORT: "5672"
+    RABBITMQ_USERNAME: ${RABBITMQ_DEFAULT_USER:-careerpilot}
+    RABBITMQ_PASSWORD: ${RABBITMQ_DEFAULT_PASS:-careerpilot}
+    FILE_STORAGE_ROOT: /data/uploads
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_started
+    rabbitmq:
+      condition: service_healthy
+    nacos:
+      condition: service_started
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-careerpilot}
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动按文件名顺序执行：career_pilot_init → stage4 → stage6 → 6b → 7 → 8 → 9
+      - ../Mysql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-careerpilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-careerpilot}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-careerpilot}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  nacos:
+    image: nacos/nacos-server:v3.0.3
+    restart: unless-stopped
+    environment:
+      MODE: standalone
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 256m
+      JVM_XMX: 512m
+    ports:
+      - "8848:8848"
+      - "9848:9848"
+      - "8849:8080"
+
+  career-ai:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      APP_LLM_ENCRYPTION_KEY: ${APP_LLM_ENCRYPTION_KEY:-}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/career_pilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8087:8087"
+    volumes:
+      - ../career-pilot-server/career-ai-service/target/career-ai.jar:/app/app.jar:ro
+
+  career-job:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_job?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8083:8083"
+    volumes:
+      - ../career-pilot-server/career-job-service/target/career-job.jar:/app/app.jar:ro
+
+  career-resume:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_resume?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8082:8082"
+    volumes:
+      - ../career-pilot-server/career-resume-service/target/career-resume.jar:/app/app.jar:ro
+      - uploads:/data/uploads
+
+  career-match:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_match?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8084:8084"
+    volumes:
+      - ../career-pilot-server/career-match-service/target/career-match.jar:/app/app.jar:ro
+
+  career-interview:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_interview?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8085:8085"
+    volumes:
+      - ../career-pilot-server/career-interview-service/target/career-interview.jar:/app/app.jar:ro
+
+  career-agent:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      APP_LLM_ENCRYPTION_KEY: ${APP_LLM_ENCRYPTION_KEY:-}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8086:8086"
+    volumes:
+      - ../career-pilot-server/career-agent-service/target/career-agent.jar:/app/app.jar:ro
+
+  career-auth:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      APP_CAPTCHA_ENABLED: ${APP_CAPTCHA_ENABLED:-true}
+      APP_LLM_ENCRYPTION_KEY: ${APP_LLM_ENCRYPTION_KEY:-}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/cp_auth?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8081:8081"
+    volumes:
+      - ../career-pilot-server/career-auth-service/target/career-auth.jar:/app/app.jar:ro
+      - uploads:/data/uploads
+
+  career-pilot-server:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+      # 单体只做 Dashboard 聚合；模型调用与 Agent 均走远程，占位 Key 满足自动配置即可
+      DEEPSEEK_API_KEY: ${APP_DEEPSEEK_PLACEHOLDER:-remote-mode-placeholder}
+      APP_LLM_ENCRYPTION_KEY: ${APP_LLM_ENCRYPTION_KEY:-}
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/career_pilot?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    ports:
+      - "8091:8091"
+    volumes:
+      - ../career-pilot-server/career-app/target/career-pilot-server.jar:/app/app.jar:ro
+      - uploads:/data/uploads
+
+  career-gateway:
+    <<: *app-common
+    command: ["java", "-jar", "/app/app.jar"]
+    environment:
+      <<: *app-env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../career-pilot-server/career-gateway/target/career-gateway.jar:/app/app.jar:ro
+
+volumes:
+  mysql-data:
+  uploads:

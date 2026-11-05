@@ -58,6 +58,12 @@ public class DashboardSummary {
     /** 最近一次匹配的差距项（missing 在前、partial 在后，最多 3 条）；无记录时为空数组 */
     private List<DashboardGapItem> topGaps;
 
+    /**
+     * 阶段 10：本次装配中降级的分区（如 {@code match}），空数组表示全部成功。
+     * 单个下游故障只影响对应卡片，其余卡片照常返回。
+     */
+    private List<String> degradedSections;
+
     public Integer getResumeCount() {
         return resumeCount;
     }
@@ -160,6 +166,14 @@ public class DashboardSummary {
 
     public void setTopGaps(List<DashboardGapItem> topGaps) {
         this.topGaps = topGaps;
+    }
+
+    public List<String> getDegradedSections() {
+        return degradedSections;
+    }
+
+    public void setDegradedSections(List<String> degradedSections) {
+        this.degradedSections = degradedSections;
     }
 
 }

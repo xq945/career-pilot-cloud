@@ -63,6 +63,8 @@ public class SecurityConfig {
                         .permitAll()
                         // 头像等公开文件（《系统架构设计》7.1）：<img> 标签不携带 Authorization 头，
                         // 且地址含不可枚举的 UUID，故只读开放；资源映射见 WebMvcConfig（两处缺一不可）
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus")
+                        .permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

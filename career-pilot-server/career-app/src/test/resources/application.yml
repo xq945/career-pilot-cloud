@@ -71,6 +71,13 @@ app:
       processing-timeout: 10m
       scan-interval: 60s
       max-recovery-count: 3
+  dashboard:
+    # 测试禁用事件失效（不依赖 RabbitMQ）；缓存本身由 DashboardCacheTest 直接覆盖
+    event-invalidation-enabled: false
+    cache-ttl-seconds: 0
+    mq:
+      exchange: cp.dev.topic
+      queue: cp.dev.dashboard.invalidate.q
   interview:
     # 测试走本地面试实现（不发起远程 Feign 调用）
     mode: local
